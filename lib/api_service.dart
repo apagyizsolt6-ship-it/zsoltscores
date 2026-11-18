@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 enum ApiProvider { highlightly, statpal }
@@ -20,8 +22,8 @@ class ApiConfig {
   static bool get isStatPal => provider == ApiProvider.statpal;
   static String get activeKey => isStatPal ? statpalKey : highlightlyKey;
   static bool get hasValidKey => activeKey.trim().isNotEmpty;
-  static String get providerTag => isStatPal ? 'sp' : 'hl';
-  static String get providerName => isStatPal ? 'StatPal.io' : 'Highlightly';
+  static String get providerTag => isStatPal ? 'sp2' : 'hl';
+  static String get providerName => isStatPal ? 'StatPal V2' : 'Highlightly';
 
   static String get highlightlyBaseUrl => useRapidApi
       ? 'https://football-highlights-api.p.rapidapi.com'
@@ -32,7 +34,9 @@ class ApiConfig {
         if (useRapidApi) 'x-rapidapi-host': 'football-highlights-api.p.rapidapi.com',
       };
 
-  static const String statpalBaseUrl = 'https://statpal.io/api/v1/soccer';
+  static const String statpalV2BaseUrl = 'https://statpal.io/api/v2/soccer';
+  static const String statpalV1BaseUrl = 'https://statpal.io/api/v1/soccer';
+  static const String statpalUsageUrl = 'https://statpal.io/api/user-request-count';
 
   static Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -60,20 +64,121 @@ class ApiConfig {
     await prefs.setBool(_hlRapidPref, useRapidApi);
     await prefs.setString(_spKeyPref, statpalKey);
   }
+}
 
-  static Future<void> clearActiveKey() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (isStatPal) {
-      statpalKey = '';
-      await prefs.remove(_spKeyPref);
-    } else {
-      highlightlyKey = '';
-      await prefs.remove(_hlKeyPref);
+// --- HELYI LOGÓ LETÖLTŐ ÉS TÁROLÓ (A RATE LIMIT ELKERÜLÉSÉRE) ---
+class LogoCache {
+  static Directory? _logoDir;
+  static final Map<String, File> _memoryIndex = {};
+  static final Set<String> _inFlight = {};
+  static int savedLogosCount = 0;
+
+  static Future<void> init() async {
+    try {
+      final baseDir = await getTemporaryDirectory();
+      final dir = Directory('${baseDir.path}/zsoltscores_logos');
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      _logoDir = dir;
+      await refreshCount();
+    } catch (_) {}
+  }
+
+  static Future<void> refreshCount() async {
+    final dir = _logoDir;
+    if (dir == null || !await dir.exists()) {
+      savedLogosCount = 0;
+      return;
     }
+    try {
+      final entities = await dir.list().toList();
+      savedLogosCount = entities.whereType<File>().length;
+    } catch (_) {}
+  }
+
+  static String _safeFileName(String url) {
+    final hash = url.codeUnits.fold<int>(5381, (h, c) => ((h << 5) + h) ^ c) & 0x7fffffff;
+    final cleanTail = url.split('?').first.toLowerCase();
+    final ext = cleanTail.endsWith('.jpg') || cleanTail.endsWith('.jpeg') ? 'jpg' : 'png';
+    return 'logo_$hash.$ext';
+  }
+
+  static String? normalizeUrl(String? rawUrl) {
+    if (rawUrl == null) return null;
+    final trimmed = rawUrl.trim();
+    if (trimmed.isEmpty) return null;
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+    if (trimmed.startsWith('//')) {
+      return 'https:$trimmed';
+    }
+    if (trimmed.startsWith('/')) {
+      return 'https://statpal.io$trimmed';
+    }
+    return 'https://statpal.io/$trimmed';
+  }
+
+  static Future<File?> getOrDownload(String? rawUrl) async {
+    final url = normalizeUrl(rawUrl);
+    if (url == null) return null;
+
+    if (_memoryIndex.containsKey(url)) {
+      final cachedFile = _memoryIndex[url]!;
+      if (await cachedFile.exists()) return cachedFile;
+    }
+
+    if (_logoDir == null) await init();
+    final dir = _logoDir;
+    if (dir == null) return null;
+
+    final file = File('${dir.path}/${_safeFileName(url)}');
+    if (await file.exists()) {
+      final len = await file.length();
+      if (len > 0) {
+        _memoryIndex[url] = file;
+        return file;
+      }
+    }
+
+    if (_inFlight.contains(url)) return null;
+    _inFlight.add(url);
+
+    try {
+      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 8));
+      if (res.statusCode == 200 && res.bodyBytes.isNotEmpty) {
+        await file.writeAsBytes(res.bodyBytes, flush: true);
+        _memoryIndex[url] = file;
+        savedLogosCount++;
+        return file;
+      }
+    } catch (_) {
+    } finally {
+      _inFlight.remove(url);
+    }
+    return null;
+  }
+
+  static Future<int> clearAll() async {
+    _memoryIndex.clear();
+    final dir = _logoDir;
+    if (dir == null || !await dir.exists()) return 0;
+    int removed = 0;
+    try {
+      await for (final entity in dir.list()) {
+        if (entity is File) {
+          await entity.delete();
+          removed++;
+        }
+      }
+    } catch (_) {}
+    savedLogosCount = 0;
+    return removed;
   }
 }
 
-// --- HELYI TÁROLÓ (CACHE) ---
+// --- HELYI JSON ADATTÁROLÓ (CACHE) ---
 class ApiCache {
   static const _prefix = 'zsolt_cache_';
   static const _savedKey = 'zsolt_cache_saved_count';
@@ -405,7 +510,7 @@ class StandingRow {
   });
 }
 
-// --- EGYESÍTETT SPORTS API SZOLGÁLTATÁS (HIGHLIGHTLY + STATPAL.IO) ---
+// --- EGYESÍTETT SPORTS API SZOLGÁLTATÁS (HIGHLIGHTLY + STATPAL V2) ---
 class SportsApiService {
   static List _asMapList(dynamic input) {
     if (input is List) {
@@ -462,6 +567,32 @@ class SportsApiService {
   }
 
   // =========================================================================
+  // 0. STATPAL HASZNÁLATFIGYELŐ (NEM FOGYASZT KVÓTÁT!)
+  // =========================================================================
+  static Future<String> fetchStatPalDailyUsage(String rawKey) async {
+    final k = rawKey.trim();
+    if (k.isEmpty) return 'Nincs megadva StatPal kulcs.';
+    final uri = Uri.parse('${ApiConfig.statpalUsageUrl}?access_key=${Uri.encodeComponent(k)}');
+    final res = await http.get(uri).timeout(const Duration(seconds: 8));
+    if (res.statusCode == 401) return 'Érvénytelen vagy lejárt StatPal kulcs (401).';
+    if (res.statusCode != 200) return 'Lekérdezési hiba (${res.statusCode}).';
+
+    final decoded = jsonDecode(res.body);
+    if (decoded is Map) {
+      final count = decoded['request_count'] ??
+          decoded['requests'] ??
+          decoded['count'] ??
+          decoded['today'] ??
+          decoded['data'];
+      if (count != null) {
+        return 'Mai StatPal API kérések: $count db';
+      }
+      return 'Válasz: ${res.body}';
+    }
+    return 'Mai kérések: ${res.body}';
+  }
+
+  // =========================================================================
   // 1. NAPI MECCSEK LEKÉRÉSE
   // =========================================================================
   static Future<FetchResult<List<MatchData>>> fetchMatches(
@@ -487,7 +618,7 @@ class SportsApiService {
     }
 
     final matches = ApiConfig.isStatPal
-        ? await _fetchStatPalMatches(date)
+        ? await _fetchStatPalV2Matches(date)
         : await _fetchHighlightlyMatches(dateStr);
 
     final sorted = _sortMatches(matches);
@@ -557,73 +688,113 @@ class SportsApiService {
     return allMatches;
   }
 
-  // --- STATPAL.IO MECCSEK ---
-  static Future<List<MatchData>> _fetchStatPalMatches(DateTime targetDate) async {
+  // --- STATPAL SOCCER V2 MECCSEK ---
+  static Future<List<MatchData>> _fetchStatPalV2Matches(DateTime targetDate) async {
     final key = Uri.encodeComponent(ApiConfig.statpalKey.trim());
+    final dateStr = formatDate(targetDate);
     final now = DateTime.now();
     final todayOnly = DateTime(now.year, now.month, now.day);
     final targetOnly = DateTime(targetDate.year, targetDate.month, targetDate.day);
 
     final byId = <String, MatchData>{};
 
-    Future<List<MatchData>> callEndpoint(String path, {required bool filterByDate}) async {
-      final uri = Uri.parse('${ApiConfig.statpalBaseUrl}/$path?access_key=$key');
-      final res = await http.get(uri).timeout(const Duration(seconds: 12));
-
+    Future<List<MatchData>> tryFetch(String fullUrl, {required bool filterByDate}) async {
+      final res = await http.get(Uri.parse(fullUrl)).timeout(const Duration(seconds: 12));
       if (res.statusCode == 401 || res.statusCode == 403) {
         throw Exception('Érvénytelen vagy lejárt StatPal API kulcs (${res.statusCode})');
       }
       if (res.statusCode == 429) {
         throw Exception('StatPal kéréskorlát (429) – várj 15 másodpercet');
       }
-      if (res.statusCode != 200) {
-        throw Exception('StatPal API hiba (${res.statusCode})');
-      }
-
+      if (res.statusCode != 200) return [];
+      final body = jsonDecode(res.body);
+      if (body is Map && body['error'] != null) return [];
       await ApiCache.recordNetworkCall();
-      final decoded = jsonDecode(res.body);
-      return _parseStatPalMatchesPayload(decoded, targetDate, filterByDate: filterByDate);
+      return _parseStatPalAnyPayload(body, targetDate, filterByDate: filterByDate);
+    }
+
+    try {
+      final v2Daily = await tryFetch(
+        '${ApiConfig.statpalV2BaseUrl}/matches?date=$dateStr&access_key=$key',
+        filterByDate: false,
+      );
+      for (final m in v2Daily) {
+        byId[m.id] = m;
+      }
+    } catch (e) {
+      if (e.toString().contains('401') || e.toString().contains('403') || e.toString().contains('429')) {
+        rethrow;
+      }
     }
 
     if (targetOnly == todayOnly) {
-      // Ma: lekérjük az élő meccseket + mai menetrendet + mai eredményeket
-      final liveList = await callEndpoint('livescore', filterByDate: false);
-      for (final m in liveList) {
-        byId[m.id] = m;
-      }
       try {
-        final schedList = await callEndpoint('upcoming-schedule', filterByDate: true);
-        for (final m in schedList) {
-          byId.putIfAbsent(m.id, () => m);
+        final v2Live = await tryFetch(
+          '${ApiConfig.statpalV2BaseUrl}/matches/live?access_key=$key',
+          filterByDate: false,
+        );
+        for (final m in v2Live) {
+          byId[m.id] = m;
         }
-      } catch (_) {}
-      try {
-        final resList = await callEndpoint('results', filterByDate: true);
-        for (final m in resList) {
-          byId.putIfAbsent(m.id, () => m);
-        }
-      } catch (_) {}
-    } else if (targetOnly.isAfter(todayOnly)) {
-      final schedList = await callEndpoint('upcoming-schedule', filterByDate: true);
-      for (final m in schedList) {
-        byId[m.id] = m;
+      } catch (e) {
+        if (byId.isEmpty) rethrow;
       }
-    } else {
-      final resList = await callEndpoint('results', filterByDate: true);
-      for (final m in resList) {
-        byId[m.id] = m;
+    }
+
+    if (byId.isEmpty) {
+      final fallbackPaths = targetOnly == todayOnly
+          ? ['livescore', 'upcoming-schedule', 'results']
+          : (targetOnly.isAfter(todayOnly) ? ['upcoming-schedule'] : ['results']);
+      for (final p in fallbackPaths) {
+        try {
+          final list = await tryFetch(
+            '${ApiConfig.statpalV1BaseUrl}/$p?access_key=$key',
+            filterByDate: p != 'livescore',
+          );
+          for (final m in list) {
+            byId.putIfAbsent(m.id, () => m);
+          }
+        } catch (_) {}
       }
     }
 
     return byId.values.toList();
   }
 
-  static List<MatchData> _parseStatPalMatchesPayload(
+  static List<MatchData> _parseStatPalAnyPayload(
     dynamic decoded,
     DateTime targetDate, {
     required bool filterByDate,
   }) {
     final results = <MatchData>[];
+    if (decoded == null) return results;
+
+    List? directList;
+    if (decoded is List) {
+      directList = decoded;
+    } else if (decoded is Map) {
+      if (decoded['data'] is List) {
+        directList = decoded['data'] as List;
+      } else if (decoded['matches'] is List) {
+        directList = decoded['matches'] as List;
+      }
+    }
+
+    if (directList != null) {
+      for (final item in directList) {
+        if (item is Map) {
+          final leagueObj = item['league'] ?? item['competition'] ?? item['tournament'];
+          final leagueName = leagueObj is Map
+              ? (_attr(leagueObj, ['name', 'title']) ?? 'Egyéb liga').toString()
+              : (leagueObj?.toString() ?? 'Egyéb liga');
+          final dateRaw = (_attr(item, ['date', 'match_date', 'kickoff', 'start_time', 'utc_date']) ?? '').toString();
+          if (filterByDate && !_statPalMatchesDate(dateRaw, targetDate)) continue;
+          results.add(_parseStatPalSingleMatch(item, leagueName));
+        }
+      }
+      return results;
+    }
+
     if (decoded is! Map) return results;
 
     final root = decoded['livescore'] ??
@@ -656,7 +827,7 @@ class SportsApiService {
 
   static bool _statPalMatchesDate(String dateRaw, DateTime target) {
     if (dateRaw.trim().isEmpty) return true;
-    final ymd = formatDate(target); // 2026-11-18
+    final ymd = formatDate(target);
     final dmyDot =
         '${target.day.toString().padLeft(2, '0')}.${target.month.toString().padLeft(2, '0')}.${target.year}';
     final dmySlash = dmyDot.replaceAll('.', '/');
@@ -667,9 +838,12 @@ class SportsApiService {
 
   static DateTime? _parseStatPalDateTime(String dateRaw, String timeRaw) {
     if (dateRaw.isEmpty) return null;
+    if (dateRaw.contains('T')) {
+      return DateTime.tryParse(dateRaw)?.toLocal();
+    }
     int? y, m, d;
     if (dateRaw.contains('-')) {
-      final p = dateRaw.split('T')[0].split('-');
+      final p = dateRaw.split('-');
       if (p.length >= 3) {
         y = int.tryParse(p[0]);
         m = int.tryParse(p[1]);
@@ -701,21 +875,32 @@ class SportsApiService {
     final awayMap = awayRaw is Map ? awayRaw : {};
 
     final homeName = homeRaw is Map
-        ? (_attr(homeMap, ['name', 'team_name']) ?? 'Hazai').toString()
+        ? (_attr(homeMap, ['name', 'team_name', 'short_name']) ?? 'Hazai').toString()
         : (homeRaw?.toString() ?? 'Hazai');
     final awayName = awayRaw is Map
-        ? (_attr(awayMap, ['name', 'team_name']) ?? 'Vendég').toString()
+        ? (_attr(awayMap, ['name', 'team_name', 'short_name']) ?? 'Vendég').toString()
         : (awayRaw?.toString() ?? 'Vendég');
 
     final homeId = _attr(homeMap, ['id'])?.toString();
     final awayId = _attr(awayMap, ['id'])?.toString();
-    final homeLogo = _attr(homeMap, ['logo', 'image', 'badge'])?.toString();
-    final awayLogo = _attr(awayMap, ['logo', 'image', 'badge'])?.toString();
+    final homeLogo = LogoCache.normalizeUrl(
+      (_attr(homeMap, ['logo', 'image', 'badge', 'crest', 'icon']) ?? m['home_logo'])?.toString(),
+    );
+    final awayLogo = LogoCache.normalizeUrl(
+      (_attr(awayMap, ['logo', 'image', 'badge', 'crest', 'icon']) ?? m['away_logo'])?.toString(),
+    );
 
-    int homeScore = int.tryParse('${_attr(homeMap, ['goals', 'score']) ?? ''}') ?? 0;
-    int awayScore = int.tryParse('${_attr(awayMap, ['goals', 'score']) ?? ''}') ?? 0;
+    final scoreMap = m['score'] is Map ? m['score'] as Map : {};
+    int homeScore = int.tryParse(
+          '${_attr(homeMap, ['goals', 'score']) ?? _attr(scoreMap, ['home', 'localteam']) ?? _attr(m, ['home_score', 'homeScore']) ?? ''}',
+        ) ??
+        0;
+    int awayScore = int.tryParse(
+          '${_attr(awayMap, ['goals', 'score']) ?? _attr(scoreMap, ['away', 'visitorteam']) ?? _attr(m, ['away_score', 'awayScore']) ?? ''}',
+        ) ??
+        0;
 
-    final combinedScore = (_attr(m, ['ft_score', 'score']) ?? '').toString();
+    final combinedScore = (_attr(m, ['ft_score']) ?? (m['score'] is String ? m['score'] : '')).toString();
     if (homeScore == 0 && awayScore == 0 && combinedScore.contains(RegExp(r'[-:]'))) {
       final parts = combinedScore.replaceAll('[', '').replaceAll(']', '').split(RegExp(r'[-:]'));
       if (parts.length >= 2) {
@@ -725,14 +910,15 @@ class SportsApiService {
     }
 
     final statusRaw = (_attr(m, ['status', 'state', 'time_status']) ?? '').toString().trim();
-    final minuteRaw = (_attr(m, ['minute', 'timer', 'clock']) ?? '').toString().trim();
-    final dateRaw = (_attr(m, ['date', 'match_date', 'formatted_date']) ?? '').toString().trim();
+    final minuteRaw = (_attr(m, ['minute', 'timer', 'clock', 'elapsed']) ?? '').toString().trim();
+    final dateRaw = (_attr(m, ['date', 'match_date', 'formatted_date', 'utc_date']) ?? '').toString().trim();
     final timeRaw = (_attr(m, ['time', 'start_time', 'kickoff']) ?? '').toString().trim();
 
     final stLower = statusRaw.toLowerCase();
     final isFinished = stLower == 'ft' ||
         stLower == 'aet' ||
         stLower == 'pen' ||
+        stLower == 'finished' ||
         stLower.contains('finish') ||
         stLower.contains('ended');
 
@@ -741,11 +927,15 @@ class SportsApiService {
         (isNumericMin ||
             stLower == 'ht' ||
             stLower == 'live' ||
+            stLower == 'in_play' ||
+            stLower == 'inplay' ||
             stLower == 'et' ||
             stLower == '1h' ||
             stLower == '2h' ||
             stLower.contains('progress') ||
             stLower.contains('half'));
+
+    final kickoffDt = _parseStatPalDateTime(dateRaw, timeRaw.isNotEmpty ? timeRaw : statusRaw);
 
     String statusLabel;
     if (isLive) {
@@ -764,6 +954,9 @@ class SportsApiService {
       statusLabel = timeRaw.length >= 5 ? timeRaw.substring(0, 5) : timeRaw;
     } else if (statusRaw.contains(':')) {
       statusLabel = statusRaw.length >= 5 ? statusRaw.substring(0, 5) : statusRaw;
+    } else if (kickoffDt != null) {
+      statusLabel =
+          '${kickoffDt.hour.toString().padLeft(2, '0')}:${kickoffDt.minute.toString().padLeft(2, '0')}';
     } else {
       statusLabel = statusRaw.isNotEmpty ? statusRaw : 'Később';
     }
@@ -787,7 +980,7 @@ class SportsApiService {
       status: statusLabel,
       isLive: isLive,
       isFinished: isFinished,
-      kickoff: _parseStatPalDateTime(dateRaw, timeRaw.isNotEmpty ? timeRaw : statusRaw),
+      kickoff: kickoffDt,
       isFromApi: true,
       possessionHome: stats['poss'] ?? 50,
       shotsHome: stats['shotsH'] ?? 0,
@@ -840,35 +1033,37 @@ class SportsApiService {
 
   static Map<String, int> _parseStatPalStats(dynamic statsNode) {
     final result = <String, int>{};
-    if (statsNode is! Map) return result;
+    if (statsNode == null) return result;
 
     int extractInt(dynamic v) =>
         int.tryParse((v ?? '0').toString().replaceAll('%', '').trim()) ?? 0;
 
-    // 1. Forma: { "home": { "possession": "56%", "shots": "10", ... }, "away": { ... } }
-    if (statsNode['home'] is Map && statsNode['away'] is Map) {
-      final h = statsNode['home'] as Map;
-      final a = statsNode['away'] as Map;
-      final poss = extractInt(_attr(h, ['possession', 'ball_possession']));
-      if (poss > 0) result['poss'] = poss;
-      result['shotsH'] = extractInt(_attr(h, ['shots', 'total_shots', 'shots_total']));
-      result['shotsA'] = extractInt(_attr(a, ['shots', 'total_shots', 'shots_total']));
-      result['sotH'] = extractInt(_attr(h, ['shots_on_target', 'on_target', 'shots_ongoal']));
-      result['sotA'] = extractInt(_attr(a, ['shots_on_target', 'on_target', 'shots_ongoal']));
-      result['cornH'] = extractInt(_attr(h, ['corners', 'corner_kicks']));
-      result['cornA'] = extractInt(_attr(a, ['corners', 'corner_kicks']));
-      result['foulH'] = extractInt(_attr(h, ['fouls', 'fouls_committed']));
-      result['foulA'] = extractInt(_attr(a, ['fouls', 'fouls_committed']));
-      return result;
+    if (statsNode is Map) {
+      if (statsNode['home'] is Map && statsNode['away'] is Map) {
+        final h = statsNode['home'] as Map;
+        final a = statsNode['away'] as Map;
+        final poss = extractInt(_attr(h, ['possession', 'ball_possession']));
+        if (poss > 0) result['poss'] = poss;
+        result['shotsH'] = extractInt(_attr(h, ['shots', 'total_shots', 'shots_total']));
+        result['shotsA'] = extractInt(_attr(a, ['shots', 'total_shots', 'shots_total']));
+        result['sotH'] = extractInt(_attr(h, ['shots_on_target', 'on_target', 'shots_ongoal']));
+        result['sotA'] = extractInt(_attr(a, ['shots_on_target', 'on_target', 'shots_ongoal']));
+        result['cornH'] = extractInt(_attr(h, ['corners', 'corner_kicks']));
+        result['cornA'] = extractInt(_attr(a, ['corners', 'corner_kicks']));
+        result['foulH'] = extractInt(_attr(h, ['fouls', 'fouls_committed']));
+        result['foulA'] = extractInt(_attr(a, ['fouls', 'fouls_committed']));
+        return result;
+      }
     }
 
-    // 2. Forma: { "stat": [ { "name": "Possession", "home": "56%", "away": "44%" } ] }
-    final list = _asMapList(statsNode['stat'] ?? statsNode['data']);
+    final list = statsNode is List
+        ? _asMapList(statsNode)
+        : (statsNode is Map ? _asMapList(statsNode['stat'] ?? statsNode['data']) : []);
     for (final item in list) {
       final row = item as Map;
       final name = (_attr(row, ['name', 'title', 'type']) ?? '').toString().toLowerCase();
-      final hv = extractInt(_attr(row, ['home', 'localteam']));
-      final av = extractInt(_attr(row, ['away', 'visitorteam']));
+      final hv = extractInt(_attr(row, ['home', 'localteam', 'home_value']));
+      final av = extractInt(_attr(row, ['away', 'visitorteam', 'away_value']));
       if (name.contains('possession')) {
         if (hv > 0) result['poss'] = hv;
       } else if (name.contains('on target') || name.contains('on goal')) {
@@ -962,8 +1157,8 @@ class SportsApiService {
       awayTeam: awayName,
       homeTeamId: homeId,
       awayTeamId: awayId,
-      homeLogo: homeMap['logo']?.toString(),
-      awayLogo: awayMap['logo']?.toString(),
+      homeLogo: LogoCache.normalizeUrl(homeMap['logo']?.toString()),
+      awayLogo: LogoCache.normalizeUrl(awayMap['logo']?.toString()),
       homeColor: colorFromName(homeName),
       awayColor: colorFromName(awayName),
       homeScore: homeScore,
@@ -1086,13 +1281,13 @@ class SportsApiService {
     }
 
     if (ApiConfig.isStatPal) {
-      return _enrichStatPalDetails(base, cacheKey);
+      return _enrichStatPalV2Details(base, cacheKey);
     } else {
       return _enrichHighlightlyDetails(base, cacheKey);
     }
   }
 
-  static Future<FetchResult<MatchData>> _enrichStatPalDetails(
+  static Future<FetchResult<MatchData>> _enrichStatPalV2Details(
     MatchData base,
     String cacheKey,
   ) async {
@@ -1100,65 +1295,67 @@ class SportsApiService {
     MatchData current = base;
     bool rateLimited = false;
 
-    // 1. Élő adatfolyam újraletöltése (állás, játékidő, gólok, statisztikák egy kérésben)
     try {
       await ApiCache.recordNetworkCall();
-      final endpoint = base.isFinished ? 'results' : 'livescore';
       final res = await http
-          .get(Uri.parse('${ApiConfig.statpalBaseUrl}/$endpoint?access_key=$key'))
+          .get(Uri.parse('${ApiConfig.statpalV2BaseUrl}/matches/${base.id}?access_key=$key'))
           .timeout(const Duration(seconds: 10));
       if (res.statusCode == 429) {
         rateLimited = true;
       } else if (res.statusCode == 200) {
-        final list = _parseStatPalMatchesPayload(jsonDecode(res.body), DateTime.now(), filterByDate: false);
-        for (final m in list) {
-          if (m.id == base.id) {
-            current = current.copyWith(
-              homeScore: m.homeScore,
-              awayScore: m.awayScore,
-              status: m.status,
-              isLive: m.isLive,
-              isFinished: m.isFinished,
-              possessionHome: m.possessionHome,
-              shotsHome: m.shotsHome,
-              shotsAway: m.shotsAway,
-              shotsOnTargetHome: m.shotsOnTargetHome,
-              shotsOnTargetAway: m.shotsOnTargetAway,
-              cornersHome: m.cornersHome,
-              cornersAway: m.cornersAway,
-              foulsHome: m.foulsHome,
-              foulsAway: m.foulsAway,
-              events: m.events.isNotEmpty ? m.events : current.events,
-            );
-            break;
-          }
+        final body = jsonDecode(res.body);
+        final obj = body is Map && body['data'] is Map ? body['data'] as Map : body;
+        if (obj is Map && obj['error'] == null) {
+          final parsed = _parseStatPalSingleMatch(obj, base.league);
+          current = current.copyWith(
+            homeScore: parsed.homeScore,
+            awayScore: parsed.awayScore,
+            status: parsed.status,
+            isLive: parsed.isLive,
+            isFinished: parsed.isFinished,
+            possessionHome: parsed.possessionHome,
+            shotsHome: parsed.shotsHome,
+            shotsAway: parsed.shotsAway,
+            shotsOnTargetHome: parsed.shotsOnTargetHome,
+            shotsOnTargetAway: parsed.shotsOnTargetAway,
+            cornersHome: parsed.cornersHome,
+            cornersAway: parsed.cornersAway,
+            foulsHome: parsed.foulsHome,
+            foulsAway: parsed.foulsAway,
+            events: parsed.events.isNotEmpty ? parsed.events : current.events,
+          );
         }
       }
     } catch (_) {}
 
-    // 2. Ha még nincs statisztika, megpróbáljuk a match-stats végpontot
-    if (!rateLimited && current.shotsHome == 0 && current.shotsAway == 0) {
+    if (!rateLimited && !base.isFinished && current.shotsHome == 0 && current.shotsAway == 0) {
       try {
         await ApiCache.recordNetworkCall();
-        final statRes = await http
-            .get(Uri.parse('${ApiConfig.statpalBaseUrl}/match-stats/${base.id}?access_key=$key'))
-            .timeout(const Duration(seconds: 8));
-        if (statRes.statusCode == 200) {
-          final body = jsonDecode(statRes.body);
-          if (body is Map) {
-            final stats = _parseStatPalStats(body['stats'] ?? body['statistics'] ?? body);
-            if (stats.isNotEmpty) {
+        final liveRes = await http
+            .get(Uri.parse('${ApiConfig.statpalV2BaseUrl}/matches/live?access_key=$key'))
+            .timeout(const Duration(seconds: 9));
+        if (liveRes.statusCode == 200) {
+          final list = _parseStatPalAnyPayload(jsonDecode(liveRes.body), DateTime.now(), filterByDate: false);
+          for (final m in list) {
+            if (m.id == base.id) {
               current = current.copyWith(
-                possessionHome: stats['poss'] ?? current.possessionHome,
-                shotsHome: stats['shotsH'] ?? current.shotsHome,
-                shotsAway: stats['shotsA'] ?? current.shotsAway,
-                shotsOnTargetHome: stats['sotH'] ?? current.shotsOnTargetHome,
-                shotsOnTargetAway: stats['sotA'] ?? current.shotsOnTargetAway,
-                cornersHome: stats['cornH'] ?? current.cornersHome,
-                cornersAway: stats['cornA'] ?? current.cornersAway,
-                foulsHome: stats['foulH'] ?? current.foulsHome,
-                foulsAway: stats['foulA'] ?? current.foulsAway,
+                homeScore: m.homeScore,
+                awayScore: m.awayScore,
+                status: m.status,
+                isLive: m.isLive,
+                isFinished: m.isFinished,
+                possessionHome: m.possessionHome,
+                shotsHome: m.shotsHome,
+                shotsAway: m.shotsAway,
+                shotsOnTargetHome: m.shotsOnTargetHome,
+                shotsOnTargetAway: m.shotsOnTargetAway,
+                cornersHome: m.cornersHome,
+                cornersAway: m.cornersAway,
+                foulsHome: m.foulsHome,
+                foulsAway: m.foulsAway,
+                events: m.events.isNotEmpty ? m.events : current.events,
               );
+              break;
             }
           }
         }
@@ -1167,7 +1364,7 @@ class SportsApiService {
 
     final note = rateLimited
         ? 'StatPal kéréskorlát (429) – várj 15 másodpercet a következő frissítésig.'
-        : 'StatPal.io élő adatforrás • Videós összefoglalókhoz válts Highlightly kulcsra a ⚙️ menüben.';
+        : 'StatPal Soccer V2 élő adatforrás • Helyileg gyorsítótárazott logókkal.';
 
     final finalMatch = current.copyWith(detailNote: note);
     if (!rateLimited) {
@@ -1335,12 +1532,12 @@ class SportsApiService {
     'Serie A': 115669,
   };
 
-  static const statpalLeagueSlugs = {
-    'Premier League': 'england-premier-league',
-    'Bajnokok Ligája': 'champions-league',
-    'La Liga': 'spain-la-liga',
-    'Bundesliga': 'germany-bundesliga',
-    'Serie A': 'italy-serie-a',
+  static const statpalV2LeagueIds = {
+    'Premier League': 3037,
+    'Bajnokok Ligája': 1005,
+    'La Liga': 1399,
+    'Bundesliga': 1229,
+    'Serie A': 1269,
   };
 
   static Future<FetchResult<List<StandingRow>>> fetchStandings(
@@ -1361,12 +1558,12 @@ class SportsApiService {
     }
 
     if (ApiConfig.isStatPal) {
-      final slug = statpalLeagueSlugs[leagueName];
-      if (slug == null) throw Exception('Ismeretlen liga');
+      final id = statpalV2LeagueIds[leagueName];
+      if (id == null) throw Exception('Ismeretlen liga');
       final key = Uri.encodeComponent(ApiConfig.statpalKey.trim());
-      final uri = Uri.parse('${ApiConfig.statpalBaseUrl}/standings/$slug?access_key=$key');
+      final uri = Uri.parse('${ApiConfig.statpalV2BaseUrl}/leagues/$id/standings?access_key=$key');
       final res = await http.get(uri).timeout(const Duration(seconds: 10));
-      if (res.statusCode != 200) throw Exception('StatPal tabella hiba (${res.statusCode})');
+      if (res.statusCode != 200) throw Exception('StatPal V2 tabella hiba (${res.statusCode})');
       await ApiCache.recordNetworkCall();
       await ApiCache.put(cacheKey, res.body);
       return FetchResult(data: _parseStatPalStandingsBody(res.body), fromCache: false);
@@ -1386,23 +1583,35 @@ class SportsApiService {
 
   static List<StandingRow> _parseStatPalStandingsBody(String body) {
     final decoded = jsonDecode(body);
-    if (decoded is! Map) return [];
-    final root = decoded['standings'] ?? decoded['data'] ?? decoded;
-    if (root is! Map) return [];
-    final leagues = _asMapList(root['league']);
-    if (leagues.isEmpty) return [];
-    final firstLeague = leagues[0] as Map;
-    final teams = _asMapList(firstLeague['team'] ?? firstLeague['standings']);
+    List teams = [];
 
-    return teams.map((item) {
+    if (decoded is List) {
+      teams = decoded;
+    } else if (decoded is Map) {
+      if (decoded['data'] is List) {
+        teams = decoded['data'] as List;
+      } else {
+        final root = decoded['standings'] ?? decoded['data'] ?? decoded;
+        if (root is Map) {
+          final leagues = _asMapList(root['league']);
+          if (leagues.isNotEmpty) {
+            final firstLeague = leagues[0] as Map;
+            teams = _asMapList(firstLeague['team'] ?? firstLeague['standings']);
+          }
+        }
+      }
+    }
+
+    return _asMapList(teams).map((item) {
       final r = item as Map;
-      final teamName = (_attr(r, ['name', 'team_name']) ?? 'Csapat').toString();
+      final teamObj = r['team'] is Map ? r['team'] as Map : r;
+      final teamName = (_attr(teamObj, ['name', 'team_name']) ?? 'Csapat').toString();
       final pos = int.tryParse('${_attr(r, ['position', 'pos', 'rank']) ?? 0}') ?? 0;
       final overall = r['overall'] is Map ? r['overall'] as Map : r;
       final total = r['total'] is Map ? r['total'] as Map : r;
-      final played = int.tryParse('${_attr(overall, ['gp', 'played', 'games']) ?? 0}') ?? 0;
-      final gf = int.tryParse('${_attr(overall, ['gs', 'gf', 'scored']) ?? 0}') ?? 0;
-      final ga = int.tryParse('${_attr(overall, ['ga', 'against', 'received']) ?? 0}') ?? 0;
+      final played = int.tryParse('${_attr(overall, ['gp', 'played', 'games', 'matches_played']) ?? 0}') ?? 0;
+      final gf = int.tryParse('${_attr(overall, ['gs', 'gf', 'scored', 'goals_for']) ?? 0}') ?? 0;
+      final ga = int.tryParse('${_attr(overall, ['ga', 'against', 'received', 'goals_against']) ?? 0}') ?? 0;
       final gd = int.tryParse('${_attr(total, ['gd', 'goal_difference']) ?? (gf - ga)}') ?? (gf - ga);
       final pts = int.tryParse('${_attr(total, ['p', 'pts', 'points']) ?? 0}') ?? 0;
 
@@ -1418,7 +1627,7 @@ class SportsApiService {
       return StandingRow(
         pos: pos,
         team: teamName,
-        logo: _attr(r, ['logo', 'image'])?.toString(),
+        logo: LogoCache.normalizeUrl(_attr(teamObj, ['logo', 'image', 'badge', 'crest'])?.toString()),
         color: colorFromName(teamName),
         played: played,
         gd: gd,
@@ -1466,7 +1675,7 @@ class SportsApiService {
       return StandingRow(
         pos: pos,
         team: teamName,
-        logo: teamMap['logo']?.toString(),
+        logo: LogoCache.normalizeUrl(teamMap['logo']?.toString()),
         color: colorFromName(teamName),
         played: played,
         gd: gd,
