@@ -75,13 +75,15 @@ class _MainShellState extends State<MainShell> {
     });
 
     try {
-      final result = await HighlightlyService.fetchMatches(_selectedDate, forceRefresh: forceRefresh);
+      final result = await SportsApiService.fetchMatches(_selectedDate, forceRefresh: forceRefresh);
       setState(() {
         _matches = result.data;
         _isLiveApiData = true;
         _loadedFromCache = result.fromCache;
         _isLoading = false;
-        _statusMessage = result.data.isEmpty ? 'Erre a napra nincs listázott meccs az API-ban.' : null;
+        _statusMessage = result.data.isEmpty
+            ? 'Erre a napra nincs listázott meccs (${ApiConfig.providerName}).'
+            : null;
       });
     } catch (e) {
       setState(() {
@@ -115,153 +117,222 @@ class _MainShellState extends State<MainShell> {
   }
 
   void _openApiSettingsDialog() {
-    final controller = TextEditingController(text: ApiConfig.apiKey);
+    ApiProvider tempProvider = ApiConfig.provider;
+    final hlController = TextEditingController(text: ApiConfig.highlightlyKey);
+    final spController = TextEditingController(text: ApiConfig.statpalKey);
     bool tempRapid = ApiConfig.useRapidApi;
     int tempTtl = ApiCache.cacheMinutes;
 
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          backgroundColor: const Color(0xFF1C2541),
-          title: const Row(
-            children: [
-              Icon(Icons.vpn_key, color: Color(0xFF00E676)),
-              SizedBox(width: 8),
-              Text('API és Tároló', style: TextStyle(fontSize: 18)),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+        builder: (ctx, setDialogState) {
+          final isSp = tempProvider == ApiProvider.statpal;
+          final activeCtrl = isSp ? spController : hlController;
+
+          return AlertDialog(
+            backgroundColor: const Color(0xFF1C2541),
+            title: const Row(
               children: [
-                const Text('Highlightly API kulcs:', style: TextStyle(fontSize: 12, color: Colors.white70)),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: controller,
-                  decoration: InputDecoration(
-                    hintText: 'Illeszd be az API kulcsot...',
-                    filled: true,
-                    fillColor: const Color(0xFF0B132B),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    suffixIcon: IconButton(
-                      icon: const Icon(Icons.content_paste, color: Color(0xFF00B0FF)),
-                      onPressed: () async {
-                        final data = await Clipboard.getData(Clipboard.kTextPlain);
-                        if (data?.text != null && data!.text!.trim().isNotEmpty) {
-                          setDialogState(() => controller.text = data.text!.trim());
-                        }
-                      },
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('RapidAPI kulcsot használok', style: TextStyle(fontSize: 13)),
-                  subtitle: Text(
-                    tempRapid ? 'football-highlights-api.p.rapidapi.com' : 'soccer.highlightly.net',
-                    style: const TextStyle(fontSize: 11, color: Colors.white54),
-                  ),
-                  value: tempRapid,
-                  onChanged: (val) => setDialogState(() => tempRapid = val),
-                ),
-                const Divider(color: Colors.white12, height: 18),
-                const Text('Helyi tároló (API keretkímélő)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Élő lista tárolása:', style: TextStyle(fontSize: 12, color: Colors.white70)),
-                    Wrap(
-                      spacing: 6,
-                      children: [2, 5, 15].map((min) {
-                        final selected = tempTtl == min;
-                        return ChoiceChip(
-                          label: Text('$min p', style: const TextStyle(fontSize: 11)),
-                          selected: selected,
+                Icon(Icons.vpn_key, color: Color(0xFF00E676)),
+                SizedBox(width: 8),
+                Text('API és Tároló', style: TextStyle(fontSize: 18)),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Aktív adatforrás:', style: TextStyle(fontSize: 12, color: Colors.white70)),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Center(child: Text('Highlightly', style: TextStyle(fontSize: 12))),
+                          selected: !isSp,
+                          selectedColor: const Color(0xFF00E676),
+                          backgroundColor: const Color(0xFF0B132B),
+                          labelStyle: TextStyle(
+                            color: !isSp ? Colors.black : Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          onSelected: (_) => setDialogState(() => tempProvider = ApiProvider.highlightly),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Center(child: Text('StatPal.io', style: TextStyle(fontSize: 12))),
+                          selected: isSp,
                           selectedColor: const Color(0xFF00B0FF),
                           backgroundColor: const Color(0xFF0B132B),
                           labelStyle: TextStyle(
-                            color: selected ? Colors.black : Colors.white,
+                            color: isSp ? Colors.black : Colors.white,
                             fontWeight: FontWeight.bold,
                           ),
-                          onSelected: (_) => setDialogState(() => tempTtl = min),
-                        );
-                      }).toList(),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0B132B),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      Column(
-                        children: [
-                          Text('${ApiCache.networkRequests}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.amberAccent, fontSize: 15)),
-                          const Text('API kérés', style: TextStyle(fontSize: 10, color: Colors.white60)),
-                        ],
-                      ),
-                      Column(
-                        children: [
-                          Text('${ApiCache.savedRequests}', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00E676), fontSize: 15)),
-                          const Text('Megspórolt', style: TextStyle(fontSize: 10, color: Colors.white60)),
-                        ],
+                          onSelected: (_) => setDialogState(() => tempProvider = ApiProvider.statpal),
+                        ),
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      final cleared = await ApiCache.clearAll();
-                      if (ctx.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Tároló ürítve ($cleared mentett elem törölve).')),
-                        );
-                      }
-                    },
-                    icon: const Icon(Icons.delete_sweep, size: 18, color: Color(0xFF00B0FF)),
-                    label: const Text('Tároló ürítése', style: TextStyle(fontSize: 12)),
+                  const SizedBox(height: 12),
+                  Text(
+                    isSp ? 'StatPal.io access_key:' : 'Highlightly API kulcs:',
+                    style: const TextStyle(fontSize: 12, color: Colors.white70),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: activeCtrl,
+                    decoration: InputDecoration(
+                      hintText: isSp ? 'Illeszd be a StatPal kulcsot...' : 'Illeszd be a Highlightly kulcsot...',
+                      filled: true,
+                      fillColor: const Color(0xFF0B132B),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.content_paste, color: Color(0xFF00B0FF)),
+                        onPressed: () async {
+                          final data = await Clipboard.getData(Clipboard.kTextPlain);
+                          if (data?.text != null && data!.text!.trim().isNotEmpty) {
+                            setDialogState(() => activeCtrl.text = data.text!.trim());
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (!isSp)
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('RapidAPI kulcsot használok', style: TextStyle(fontSize: 13)),
+                      subtitle: Text(
+                        tempRapid ? 'football-highlights-api.p.rapidapi.com' : 'soccer.highlightly.net',
+                        style: const TextStyle(fontSize: 11, color: Colors.white54),
+                      ),
+                      value: tempRapid,
+                      onChanged: (val) => setDialogState(() => tempRapid = val),
+                    )
+                  else
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF00B0FF).withAlpha(25),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFF00B0FF).withAlpha(90)),
+                      ),
+                      child: const Text(
+                        'statpal.io/api/v1/soccer • 15 mp-es élő frissítés, részletes meccsstatisztikák és tabellák.',
+                        style: TextStyle(fontSize: 11, color: Colors.white70),
+                      ),
+                    ),
+                  const Divider(color: Colors.white12, height: 18),
+                  const Text('Helyi tároló (API keretkímélő)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Élő lista tárolása:', style: TextStyle(fontSize: 12, color: Colors.white70)),
+                      Wrap(
+                        spacing: 6,
+                        children: [2, 5, 15].map((min) {
+                          final selected = tempTtl == min;
+                          return ChoiceChip(
+                            label: Text('$min p', style: const TextStyle(fontSize: 11)),
+                            selected: selected,
+                            selectedColor: const Color(0xFF00B0FF),
+                            backgroundColor: const Color(0xFF0B132B),
+                            labelStyle: TextStyle(
+                              color: selected ? Colors.black : Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            onSelected: (_) => setDialogState(() => tempTtl = min),
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0B132B),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        Column(
+                          children: [
+                            Text('${ApiCache.networkRequests}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.amberAccent, fontSize: 15)),
+                            const Text('API kérés', style: TextStyle(fontSize: 10, color: Colors.white60)),
+                          ],
+                        ),
+                        Column(
+                          children: [
+                            Text('${ApiCache.savedRequests}', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00E676), fontSize: 15)),
+                            const Text('Megspórolt', style: TextStyle(fontSize: 10, color: Colors.white60)),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        final cleared = await ApiCache.clearAll();
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Tároló ürítve ($cleared mentett elem törölve).')),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.delete_sweep, size: 18, color: Color(0xFF00B0FF)),
+                      label: const Text('Tároló ürítése', style: TextStyle(fontSize: 12)),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          actions: [
-            if (ApiConfig.hasValidKey)
-              TextButton(
+            actions: [
+              if (activeCtrl.text.trim().isNotEmpty)
+                TextButton(
+                  onPressed: () async {
+                    setDialogState(() => activeCtrl.clear());
+                    await ApiConfig.save(
+                      newProvider: tempProvider,
+                      newHighlightlyKey: hlController.text,
+                      rapid: tempRapid,
+                      newStatpalKey: spController.text,
+                    );
+                    if (ctx.mounted) Navigator.pop(ctx);
+                    setState(() => _settingsVersion++);
+                    _loadMatches(forceRefresh: true);
+                  },
+                  child: const Text('Kulcs törlése', style: TextStyle(color: Colors.redAccent)),
+                ),
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Mégse')),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: const Color(0xFF00E676)),
                 onPressed: () async {
-                  await ApiConfig.clear();
+                  await ApiConfig.save(
+                    newProvider: tempProvider,
+                    newHighlightlyKey: hlController.text,
+                    rapid: tempRapid,
+                    newStatpalKey: spController.text,
+                  );
+                  await ApiCache.setCacheMinutes(tempTtl);
                   if (ctx.mounted) Navigator.pop(ctx);
                   setState(() => _settingsVersion++);
-                  _loadMatches(forceRefresh: true);
+                  _loadMatches(forceRefresh: false);
                 },
-                child: const Text('Kulcs törlése', style: TextStyle(color: Colors.redAccent)),
+                child: const Text('Mentés', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
               ),
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Mégse')),
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: const Color(0xFF00E676)),
-              onPressed: () async {
-                await ApiConfig.save(controller.text, tempRapid);
-                await ApiCache.setCacheMinutes(tempTtl);
-                if (ctx.mounted) Navigator.pop(ctx);
-                setState(() => _settingsVersion++);
-                _loadMatches(forceRefresh: false);
-              },
-              child: const Text('Mentés', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-            ),
-          ],
-        ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -378,9 +449,12 @@ class _MatchesTabState extends State<MatchesTab> {
     }).toList();
 
     final countText = '${widget.matches.length} meccs';
+    final provName = ApiConfig.providerName;
     final sourceSubtitle = !widget.isLiveApiData
-        ? 'Demo mód'
-        : (widget.loadedFromCache ? 'Tárolóból betöltve • $countText' : 'Highlightly Élő API • $countText');
+        ? 'Demo mód ($provName kiválasztva)'
+        : (widget.loadedFromCache
+            ? 'Tárolóból ($provName) • $countText'
+            : '$provName Élő API • $countText');
     final sourceColor = !widget.isLiveApiData
         ? Colors.amberAccent
         : (widget.loadedFromCache ? const Color(0xFF00B0FF) : const Color(0xFF00E676));
@@ -458,7 +532,7 @@ class _MatchesTabState extends State<MatchesTab> {
                           GestureDetector(
                             onTap: widget.onJumpToday,
                             child: Text(
-                              HighlightlyService.formatDate(widget.selectedDate),
+                              SportsApiService.formatDate(widget.selectedDate),
                               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                             ),
                           ),
@@ -505,7 +579,12 @@ class _MatchesTabState extends State<MatchesTab> {
                 children: [
                   const Icon(Icons.vpn_key, color: Color(0xFF00E676), size: 22),
                   const SizedBox(width: 10),
-                  const Expanded(child: Text('Add meg a Highlightly API kulcsodat az élő meccsekhez!', style: TextStyle(fontSize: 12))),
+                  Expanded(
+                    child: Text(
+                      'Add meg a ${ApiConfig.providerName} kulcsodat az élő meccsekhez!',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
                   const SizedBox(width: 8),
                   FilledButton(
                     style: FilledButton.styleFrom(backgroundColor: const Color(0xFF00E676), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
@@ -685,14 +764,6 @@ class _StandingsTabState extends State<StandingsTab> {
   bool _fromCache = false;
   List<StandingRow> _rows = sampleStandings['Premier League']!;
 
-  static const leagueIds = {
-    'Premier League': 33973,
-    'Bajnokok Ligája': 2486,
-    'La Liga': 119924,
-    'Bundesliga': 67162,
-    'Serie A': 115669,
-  };
-
   @override
   void initState() {
     super.initState();
@@ -700,8 +771,7 @@ class _StandingsTabState extends State<StandingsTab> {
   }
 
   Future<void> _loadStandings({bool forceRefresh = false}) async {
-    final id = leagueIds[selectedLeague];
-    if (!ApiConfig.hasValidKey || id == null) {
+    if (!ApiConfig.hasValidKey) {
       setState(() {
         _rows = sampleStandings[selectedLeague] ?? sampleStandings['Premier League']!;
         _fromCache = false;
@@ -711,9 +781,11 @@ class _StandingsTabState extends State<StandingsTab> {
 
     setState(() => _loading = true);
     try {
-      final result = await HighlightlyService.fetchStandings(id, forceRefresh: forceRefresh);
+      final result = await SportsApiService.fetchStandings(selectedLeague, forceRefresh: forceRefresh);
       setState(() {
-        _rows = result.data.isNotEmpty ? result.data : (sampleStandings[selectedLeague] ?? sampleStandings['Premier League']!);
+        _rows = result.data.isNotEmpty
+            ? result.data
+            : (sampleStandings[selectedLeague] ?? sampleStandings['Premier League']!);
         _fromCache = result.fromCache;
         _loading = false;
       });
@@ -735,7 +807,7 @@ class _StandingsTabState extends State<StandingsTab> {
 
   @override
   Widget build(BuildContext context) {
-    final leagues = leagueIds.keys.toList();
+    final leagues = SportsApiService.highlightlyLeagueIds.keys.toList();
 
     return SafeArea(
       child: Column(
@@ -756,7 +828,9 @@ class _StandingsTabState extends State<StandingsTab> {
                     const Text('Bajnoki Tabellák 🏆', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 4),
                     Text(
-                      _fromCache ? 'Tárolóból betöltve (2 órás védelem)' : 'Highlightly élő állások és pontszámok',
+                      _fromCache
+                          ? 'Tárolóból (${ApiConfig.providerName}) • 2 órás védelem'
+                          : '${ApiConfig.providerName} élő állások és pontszámok',
                       style: TextStyle(fontSize: 12, color: _fromCache ? const Color(0xFF00B0FF) : Colors.white70),
                     ),
                   ],
@@ -939,7 +1013,8 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
     _match = widget.match;
     _fetchDetails();
     if (_match.isLive && _match.isFromApi) {
-      _autoTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      final intervalSec = ApiConfig.isStatPal ? 15 : 30;
+      _autoTimer = Timer.periodic(Duration(seconds: intervalSec), (_) {
         if (mounted && _match.isLive) {
           _fetchDetails(forceRefresh: true);
         }
@@ -956,7 +1031,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
   Future<void> _fetchDetails({bool forceRefresh = false}) async {
     if (!ApiConfig.hasValidKey || !_match.isFromApi) return;
     setState(() => _loadingDetails = true);
-    final result = await HighlightlyService.enrichMatchDetails(_match, forceRefresh: forceRefresh);
+    final result = await SportsApiService.enrichMatchDetails(_match, forceRefresh: forceRefresh);
     if (mounted) {
       setState(() {
         _match = result.data;
@@ -968,6 +1043,8 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final intervalSec = ApiConfig.isStatPal ? 15 : 30;
+
     return DefaultTabController(
       length: 3,
       child: Scaffold(
@@ -977,9 +1054,9 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
             children: [
               Text(_match.league, style: const TextStyle(fontSize: 16)),
               if (_fromCache)
-                const Text('Tárolóból betöltve (45 mp védelem)', style: TextStyle(fontSize: 11, color: Color(0xFF00B0FF)))
+                Text('Tárolóból betöltve (${ApiConfig.providerName})', style: const TextStyle(fontSize: 11, color: Color(0xFF00B0FF)))
               else if (_match.isLive && _match.isFromApi)
-                const Text('Élő követés • 30 mp-enként frissül', style: TextStyle(fontSize: 11, color: Color(0xFF00E676))),
+                Text('Élő követés • $intervalSec mp-enként frissül', style: const TextStyle(fontSize: 11, color: Color(0xFF00E676))),
             ],
           ),
           backgroundColor: const Color(0xFF1C2541),
@@ -1080,10 +1157,16 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                           },
                         ),
                   _match.highlights.isEmpty
-                      ? const Center(
+                      ? Center(
                           child: Padding(
-                            padding: EdgeInsets.all(24),
-                            child: Text('Ehhez a meccshez még nem érhető el videós összefoglaló.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white60)),
+                            padding: const EdgeInsets.all(24),
+                            child: Text(
+                              ApiConfig.isStatPal
+                                  ? 'A StatPal.io szöveges élő adatokat és statisztikákat ad;\nvideós összefoglalókhoz válts Highlightly kulcsra a ⚙️ menüben.'
+                                  : 'Ehhez a meccshez még nem érhető el videós összefoglaló.',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: Colors.white60, height: 1.5),
+                            ),
                           ),
                         )
                       : ListView.builder(
