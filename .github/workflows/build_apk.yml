@@ -1,23 +1,57 @@
 name: Android APK Build
 
-on:
-  push:
-    branches: [ main, master ]
-  workflow_dispatch:
+on: [push, workflow_dispatch]
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+
       - run: flutter create . --platforms=android
+
       - run: flutter pub get
+
+      - name: Gradle tárolók javítása
+        run: |
+          mkdir -p ~/.gradle/init.d
+          cat << 'EOF' > ~/.gradle/init.d/repos.gradle
+          beforeSettings { settings ->
+              settings.pluginManagement {
+                  repositories {
+                      mavenCentral()
+                      google()
+                      gradlePluginPortal()
+                  }
+              }
+              settings.dependencyResolutionManagement {
+                  repositories {
+                      mavenCentral()
+                      google()
+                      gradlePluginPortal()
+                  }
+              }
+          }
+          allprojects {
+              buildscript {
+                  repositories {
+                      mavenCentral()
+                      google()
+                      gradlePluginPortal()
+                  }
+              }
+          }
+          EOF
+
       - run: flutter build apk --release
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: zsoltscores-apk
+          name: app-release
           path: build/app/outputs/flutter-apk/app-release.apk
