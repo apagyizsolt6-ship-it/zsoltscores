@@ -165,6 +165,8 @@ class MatchData {
   final String league;
   final String homeTeam;
   final String awayTeam;
+  final String? homeTeamId;
+  final String? awayTeamId;
   final String? homeLogo;
   final String? awayLogo;
   final Color homeColor;
@@ -173,6 +175,8 @@ class MatchData {
   final int awayScore;
   final String status;
   final bool isLive;
+  final bool isFinished;
+  final DateTime? kickoff;
   final bool isFromApi;
   final int possessionHome;
   final int shotsHome;
@@ -185,12 +189,15 @@ class MatchData {
   final int foulsAway;
   final List<MatchEvent> events;
   final List<HighlightClip> highlights;
+  final String? detailNote;
 
   const MatchData({
     required this.id,
     required this.league,
     required this.homeTeam,
     required this.awayTeam,
+    this.homeTeamId,
+    this.awayTeamId,
     this.homeLogo,
     this.awayLogo,
     required this.homeColor,
@@ -199,6 +206,8 @@ class MatchData {
     required this.awayScore,
     required this.status,
     required this.isLive,
+    this.isFinished = false,
+    this.kickoff,
     this.isFromApi = false,
     required this.possessionHome,
     required this.shotsHome,
@@ -211,9 +220,15 @@ class MatchData {
     required this.foulsAway,
     required this.events,
     this.highlights = const [],
+    this.detailNote,
   });
 
   MatchData copyWith({
+    int? homeScore,
+    int? awayScore,
+    String? status,
+    bool? isLive,
+    bool? isFinished,
     int? possessionHome,
     int? shotsHome,
     int? shotsAway,
@@ -225,20 +240,25 @@ class MatchData {
     int? foulsAway,
     List<MatchEvent>? events,
     List<HighlightClip>? highlights,
+    String? detailNote,
   }) {
     return MatchData(
       id: id,
       league: league,
       homeTeam: homeTeam,
       awayTeam: awayTeam,
+      homeTeamId: homeTeamId,
+      awayTeamId: awayTeamId,
       homeLogo: homeLogo,
       awayLogo: awayLogo,
       homeColor: homeColor,
       awayColor: awayColor,
-      homeScore: homeScore,
-      awayScore: awayScore,
-      status: status,
-      isLive: isLive,
+      homeScore: homeScore ?? this.homeScore,
+      awayScore: awayScore ?? this.awayScore,
+      status: status ?? this.status,
+      isLive: isLive ?? this.isLive,
+      isFinished: isFinished ?? this.isFinished,
+      kickoff: kickoff,
       isFromApi: isFromApi,
       possessionHome: possessionHome ?? this.possessionHome,
       shotsHome: shotsHome ?? this.shotsHome,
@@ -251,6 +271,7 @@ class MatchData {
       foulsAway: foulsAway ?? this.foulsAway,
       events: events ?? this.events,
       highlights: highlights ?? this.highlights,
+      detailNote: detailNote,
     );
   }
 }
@@ -310,6 +331,23 @@ class HighlightlyService {
     return '$y-$m-$d';
   }
 
+  static List<MatchData> _sortMatches(List<MatchData> list) {
+    final sorted = List<MatchData>.of(list);
+    sorted.sort((a, b) {
+      // 1. Élő meccsek legelöl
+      if (a.isLive != b.isLive) return a.isLive ? -1 : 1;
+      // 2. Közelgő meccsek a befejezettek előtt
+      if (a.isFinished != b.isFinished) return a.isFinished ? 1 : -1;
+      // 3. Időrend szerint
+      if (a.kickoff != null && b.kickoff != null) {
+        final cmp = a.kickoff!.compareTo(b.kickoff!);
+        if (cmp != 0) return cmp;
+      }
+      return a.league.compareTo(b.league);
+    });
+    return sorted;
+  }
+
   static Future<FetchResult<List<MatchData>>> fetchMatches(
     DateTime date, {
     bool forceRefresh = false,
@@ -318,7 +356,7 @@ class HighlightlyService {
 
     final dateStr = formatDate(date);
     final todayStr = formatDate(DateTime.now());
-    final cacheKey = 'matches_$dateStr';
+    final cacheKey = 'matches_all_$dateStr';
     final ttl = dateStr == todayStr
         ? Duration(minutes: ApiCache.cacheMinutes)
         : const Duration(hours: 12);
@@ -330,20 +368,67 @@ class HighlightlyService {
       }
     }
 
-    final uri = Uri.parse('${ApiConfig.baseUrl}/matches?date=$dateStr&limit=50');
-    final response = await http.get(uri, headers: ApiConfig.headers).timeout(const Duration(seconds: 12));
+    const int pageSize = 100;
+    int offset = 0;
+    final allRawItems = [];
+    final allMatches = <MatchData>[];
+    final seenIds = <String>{};
 
-    if (response.statusCode == 401 || response.statusCode == 403) {
-      throw Exception('Érvénytelen API kulcs (${response.statusCode})');
+    // Lapozva lekérjük az adott nap ÖSSZES meccsét
+    for (int page = 0; page < 10; page++) {
+      final uri = Uri.parse(
+        '${ApiConfig.baseUrl}/matches?date=$dateStr&timezone=Europe/Budapest&limit=$pageSize&offset=$offset',
+      );
+      final response = await http.get(uri, headers: ApiConfig.headers).timeout(const Duration(seconds: 12));
+
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        throw Exception('Érvénytelen API kulcs (${response.statusCode})');
+      }
+      if (response.statusCode == 429) {
+        if (allMatches.isNotEmpty) break;
+        throw Exception('API kéréskorlát (429) – várj pár másodpercet');
+      }
+      if (response.statusCode != 200) {
+        if (allMatches.isNotEmpty) break;
+        throw Exception('API hiba (${response.statusCode})');
+      }
+
+      await ApiCache.recordNetworkCall();
+
+      final decoded = jsonDecode(response.body);
+      final rawList = decoded is List
+          ? decoded
+          : (decoded is Map && decoded['data'] is List ? decoded['data'] : []);
+
+      final mapItems = _asMapList(rawList);
+      int newlyAdded = 0;
+      for (final item in mapItems) {
+        final mObj = _parseMatch(item as Map);
+        if (!seenIds.contains(mObj.id)) {
+          seenIds.add(mObj.id);
+          allRawItems.add(item);
+          allMatches.add(mObj);
+          newlyAdded++;
+        }
+      }
+
+      int? totalCount;
+      if (decoded is Map && decoded['pagination'] is Map) {
+        totalCount = int.tryParse('${decoded['pagination']['totalCount'] ?? ''}');
+      }
+
+      if (mapItems.length < pageSize || newlyAdded == 0) break;
+      if (totalCount != null && allMatches.length >= totalCount) break;
+
+      offset += pageSize;
+      await Future.delayed(const Duration(milliseconds: 280));
     }
-    if (response.statusCode != 200) {
-      throw Exception('API hiba (${response.statusCode})');
+
+    if (allRawItems.isNotEmpty) {
+      await ApiCache.put(cacheKey, jsonEncode(allRawItems));
     }
 
-    await ApiCache.recordNetworkCall();
-    await ApiCache.put(cacheKey, response.body);
-
-    return FetchResult(data: _parseMatchListBody(response.body), fromCache: false);
+    return FetchResult(data: _sortMatches(allMatches), fromCache: false);
   }
 
   static List<MatchData> _parseMatchListBody(String body) {
@@ -351,7 +436,8 @@ class HighlightlyService {
     final rawList = decoded is List
         ? decoded
         : (decoded is Map && decoded['data'] is List ? decoded['data'] : []);
-    return _asMapList(rawList).map((e) => _parseMatch(e as Map)).toList();
+    final list = _asMapList(rawList).map((e) => _parseMatch(e as Map)).toList();
+    return _sortMatches(list);
   }
 
   static MatchData _parseMatch(Map m) {
@@ -362,6 +448,8 @@ class HighlightlyService {
 
     final homeName = (homeMap['name'] ?? m['homeTeam'] ?? 'Hazai').toString();
     final awayName = (awayMap['name'] ?? m['awayTeam'] ?? 'Vendég').toString();
+    final homeId = homeMap['id']?.toString();
+    final awayId = awayMap['id']?.toString();
     final leagueName = (leagueMap['name'] ?? m['league'] ?? 'Egyéb liga').toString();
 
     int homeScore = 0;
@@ -387,25 +475,44 @@ class HighlightlyService {
         descLower.contains('live') ||
         descLower.contains('extra');
 
+    final isFinished = descLower.contains('finish') ||
+        descLower.contains('ended') ||
+        descLower == 'ft' ||
+        descLower == 'aet' ||
+        descLower == 'pen';
+
+    DateTime? kickoffDt;
+    if (m['date'] != null && m['date'].toString().contains('T')) {
+      kickoffDt = DateTime.tryParse(m['date'].toString())?.toLocal();
+    }
+
     String statusLabel;
     if (isLive) {
       statusLabel = clock.isNotEmpty ? "$clock'" : 'ÉLŐ';
-    } else if (descLower.contains('finish') || descLower.contains('ended') || descLower == 'ft') {
+    } else if (isFinished) {
       statusLabel = 'VÉGE';
-    } else if (m['date'] != null && m['date'].toString().contains('T')) {
-      final dt = DateTime.tryParse(m['date'].toString())?.toLocal();
-      statusLabel = dt != null
-          ? '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}'
-          : (desc.isNotEmpty ? desc : 'Később');
+    } else if (kickoffDt != null) {
+      statusLabel =
+          '${kickoffDt.hour.toString().padLeft(2, '0')}:${kickoffDt.minute.toString().padLeft(2, '0')}';
     } else {
       statusLabel = desc.isNotEmpty ? desc : 'Később';
     }
+
+    final parsedEvents = m['events'] is List
+        ? _parseEventsList(m['events'] as List, homeName, homeId)
+        : <MatchEvent>[];
+
+    final statsParsed = m['statistics'] is List
+        ? _parseStatisticsList(m['statistics'] as List)
+        : null;
 
     return MatchData(
       id: (m['id'] ?? '${homeName}_$awayName').toString(),
       league: leagueName,
       homeTeam: homeName,
       awayTeam: awayName,
+      homeTeamId: homeId,
+      awayTeamId: awayId,
       homeLogo: homeMap['logo']?.toString(),
       awayLogo: awayMap['logo']?.toString(),
       homeColor: colorFromName(homeName),
@@ -414,18 +521,88 @@ class HighlightlyService {
       awayScore: awayScore,
       status: statusLabel,
       isLive: isLive,
+      isFinished: isFinished,
+      kickoff: kickoffDt,
       isFromApi: true,
-      possessionHome: 50,
-      shotsHome: 0,
-      shotsAway: 0,
-      shotsOnTargetHome: 0,
-      shotsOnTargetAway: 0,
-      cornersHome: 0,
-      cornersAway: 0,
-      foulsHome: 0,
-      foulsAway: 0,
-      events: const [],
+      possessionHome: statsParsed?['poss'] ?? 50,
+      shotsHome: statsParsed?['shotsH'] ?? 0,
+      shotsAway: statsParsed?['shotsA'] ?? 0,
+      shotsOnTargetHome: statsParsed?['sotH'] ?? 0,
+      shotsOnTargetAway: statsParsed?['sotA'] ?? 0,
+      cornersHome: statsParsed?['cornH'] ?? 0,
+      cornersAway: statsParsed?['cornA'] ?? 0,
+      foulsHome: statsParsed?['foulH'] ?? 0,
+      foulsAway: statsParsed?['foulA'] ?? 0,
+      events: parsedEvents,
     );
+  }
+
+  static Map<String, int>? _parseStatisticsList(List list) {
+    if (list.length < 2 || list[0] is! Map || list[1] is! Map) return null;
+    final hStats = (list[0]['statistics'] is List ? list[0]['statistics'] : []) as List;
+    final aStats = (list[1]['statistics'] is List ? list[1]['statistics'] : []) as List;
+    if (hStats.isEmpty && aStats.isEmpty) return null;
+
+    int readStat(List stats, List<String> keywords) {
+      for (final item in stats) {
+        if (item is Map) {
+          final name = (item['displayName'] ?? item['type'] ?? item['name'] ?? item['title'] ?? '')
+              .toString()
+              .toLowerCase();
+          if (keywords.any((k) => name.contains(k))) {
+            final raw = (item['value'] ?? '0').toString().replaceAll('%', '').trim();
+            return int.tryParse(raw) ?? 0;
+          }
+        }
+      }
+      return 0;
+    }
+
+    final p = readStat(hStats, ['possession']);
+    return {
+      'poss': p > 0 ? p : 50,
+      'shotsH': readStat(hStats, ['total shots', 'shots']),
+      'shotsA': readStat(aStats, ['total shots', 'shots']),
+      'sotH': readStat(hStats, ['on target', 'shots on goal']),
+      'sotA': readStat(aStats, ['on target', 'shots on goal']),
+      'cornH': readStat(hStats, ['corner']),
+      'cornA': readStat(aStats, ['corner']),
+      'foulH': readStat(hStats, ['foul']),
+      'foulA': readStat(aStats, ['foul']),
+    };
+  }
+
+  static List<MatchEvent> _parseEventsList(List list, String homeTeamName, String? homeTeamId) {
+    final parsed = <MatchEvent>[];
+    for (final item in list) {
+      if (item is Map) {
+        final rawType = (item['type'] ?? item['event'] ?? '').toString().toLowerCase();
+        String type = 'goal';
+        if (rawType.contains('yellow')) {
+          type = 'yellow';
+        } else if (rawType.contains('red')) {
+          type = 'red';
+        } else if (!rawType.contains('goal') && !rawType.contains('pen')) {
+          continue;
+        }
+        final teamObj = item['team'] is Map ? item['team'] as Map : {};
+        final evTeamId = (teamObj['id'] ?? item['teamId'] ?? '').toString();
+        final evTeamName = (teamObj['name'] ?? item['teamName'] ?? '').toString();
+        final isHome = (homeTeamId != null && evTeamId.isNotEmpty && evTeamId == homeTeamId) ||
+            evTeamName.toLowerCase() == homeTeamName.toLowerCase();
+
+        final playerObj = item['player'] is Map ? item['player'] as Map : {};
+        final player = (playerObj['name'] ?? item['player'] ?? item['playerName'] ?? 'Játékos').toString();
+        final time = (item['time'] ?? item['minute'] ?? '').toString();
+        parsed.add(MatchEvent(
+          minute: time.endsWith("'") ? time : "$time'",
+          player: player,
+          type: type,
+          isHome: isHome,
+        ));
+      }
+    }
+    return parsed;
   }
 
   static Future<FetchResult<MatchData>> enrichMatchDetails(
@@ -437,12 +614,12 @@ class HighlightlyService {
     }
 
     final cacheKey = 'detail_${base.id}';
-    final ttl = base.status == 'VÉGE'
+    final ttl = base.isFinished
         ? const Duration(hours: 12)
-        : Duration(minutes: ApiCache.cacheMinutes);
+        : const Duration(seconds: 45);
 
     if (!forceRefresh) {
-      final cachedJson = await ApiCache.get(cacheKey, ttl, savedWeight: 3);
+      final cachedJson = await ApiCache.get(cacheKey, ttl, savedWeight: 2);
       if (cachedJson != null) {
         final decoded = jsonDecode(cachedJson);
         if (decoded is Map) {
@@ -455,6 +632,11 @@ class HighlightlyService {
           return FetchResult(
             fromCache: true,
             data: base.copyWith(
+              homeScore: decoded['homeScore'] as int? ?? base.homeScore,
+              awayScore: decoded['awayScore'] as int? ?? base.awayScore,
+              status: decoded['status']?.toString() ?? base.status,
+              isLive: decoded['isLive'] as bool? ?? base.isLive,
+              isFinished: decoded['isFinished'] as bool? ?? base.isFinished,
               possessionHome: decoded['possessionHome'] as int? ?? base.possessionHome,
               shotsHome: decoded['shotsHome'] as int? ?? 0,
               shotsAway: decoded['shotsAway'] as int? ?? 0,
@@ -466,156 +648,166 @@ class HighlightlyService {
               foulsAway: decoded['foulsAway'] as int? ?? 0,
               events: evList,
               highlights: clipList,
+              detailNote: decoded['detailNote']?.toString(),
             ),
           );
         }
       }
     }
 
-    int possHome = base.possessionHome;
-    int shotsH = base.shotsHome;
-    int shotsA = base.shotsAway;
-    int sotH = base.shotsOnTargetHome;
-    int sotA = base.shotsOnTargetAway;
-    int cornH = base.cornersHome;
-    int cornA = base.cornersAway;
-    int foulH = base.foulsHome;
-    int foulA = base.foulsAway;
-    List<MatchEvent> events = List.of(base.events);
+    MatchData current = base;
     List<HighlightClip> clips = List.of(base.highlights);
+    bool rateLimited = false;
 
     try {
       await ApiCache.recordNetworkCall();
-      final statRes = await http
-          .get(Uri.parse('${ApiConfig.baseUrl}/match-statistics/${base.id}'), headers: ApiConfig.headers)
-          .timeout(const Duration(seconds: 8));
-      if (statRes.statusCode == 200) {
-        final body = jsonDecode(statRes.body);
-        final list = body is List ? body : (body is Map && body['data'] is List ? body['data'] : []);
-        if (list.length >= 2 && list[0] is Map && list[1] is Map) {
-          final hStats = (list[0]['statistics'] is List ? list[0]['statistics'] : []) as List;
-          final aStats = (list[1]['statistics'] is List ? list[1]['statistics'] : []) as List;
+      final matchRes = await http
+          .get(Uri.parse('${ApiConfig.baseUrl}/matches/${base.id}'), headers: ApiConfig.headers)
+          .timeout(const Duration(seconds: 9));
+      if (matchRes.statusCode == 429) {
+        rateLimited = true;
+      } else if (matchRes.statusCode == 200) {
+        final body = jsonDecode(matchRes.body);
+        final obj = body is List && body.isNotEmpty
+            ? body[0]
+            : (body is Map && body['data'] is Map
+                ? body['data']
+                : (body is Map && body['data'] is List && (body['data'] as List).isNotEmpty
+                    ? (body['data'] as List)[0]
+                    : body));
+        if (obj is Map) {
+          final updated = _parseMatch(obj);
+          current = current.copyWith(
+            homeScore: updated.homeScore,
+            awayScore: updated.awayScore,
+            status: updated.status,
+            isLive: updated.isLive,
+            isFinished: updated.isFinished,
+            possessionHome: updated.possessionHome,
+            shotsHome: updated.shotsHome,
+            shotsAway: updated.shotsAway,
+            shotsOnTargetHome: updated.shotsOnTargetHome,
+            shotsOnTargetAway: updated.shotsOnTargetAway,
+            cornersHome: updated.cornersHome,
+            cornersAway: updated.cornersAway,
+            foulsHome: updated.foulsHome,
+            foulsAway: updated.foulsAway,
+            events: updated.events.isNotEmpty ? updated.events : current.events,
+          );
+        }
+      }
+    } catch (_) {}
 
-          int readStat(List stats, List<String> keywords) {
-            for (final item in stats) {
-              if (item is Map) {
-                final name = (item['displayName'] ?? item['type'] ?? item['name'] ?? '').toString().toLowerCase();
-                if (keywords.any((k) => name.contains(k))) {
-                  final raw = (item['value'] ?? '0').toString().replaceAll('%', '').trim();
-                  return int.tryParse(raw) ?? 0;
-                }
-              }
+    if (!rateLimited && current.shotsHome == 0 && current.shotsAway == 0) {
+      await Future.delayed(const Duration(milliseconds: 350));
+      try {
+        await ApiCache.recordNetworkCall();
+        final statRes = await http
+            .get(Uri.parse('${ApiConfig.baseUrl}/match-statistics/${base.id}'), headers: ApiConfig.headers)
+            .timeout(const Duration(seconds: 8));
+        if (statRes.statusCode == 429) {
+          rateLimited = true;
+        } else if (statRes.statusCode == 200) {
+          final body = jsonDecode(statRes.body);
+          final list = body is List ? body : (body is Map && body['data'] is List ? body['data'] : []);
+          final parsedStats = _parseStatisticsList(list);
+          if (parsedStats != null) {
+            current = current.copyWith(
+              possessionHome: parsedStats['poss'],
+              shotsHome: parsedStats['shotsH'],
+              shotsAway: parsedStats['shotsA'],
+              shotsOnTargetHome: parsedStats['sotH'],
+              shotsOnTargetAway: parsedStats['sotA'],
+              cornersHome: parsedStats['cornH'],
+              cornersAway: parsedStats['cornA'],
+              foulsHome: parsedStats['foulH'],
+              foulsAway: parsedStats['foulA'],
+            );
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (!rateLimited && current.events.isEmpty) {
+      await Future.delayed(const Duration(milliseconds: 350));
+      try {
+        await ApiCache.recordNetworkCall();
+        final evRes = await http
+            .get(Uri.parse('${ApiConfig.baseUrl}/live-events/${base.id}'), headers: ApiConfig.headers)
+            .timeout(const Duration(seconds: 8));
+        if (evRes.statusCode == 429) {
+          rateLimited = true;
+        } else if (evRes.statusCode == 200) {
+          final body = jsonDecode(evRes.body);
+          final list = body is List ? body : (body is Map && body['data'] is List ? body['data'] : []);
+          final parsedEvents = _parseEventsList(list, current.homeTeam, current.homeTeamId);
+          if (parsedEvents.isNotEmpty) {
+            current = current.copyWith(events: parsedEvents);
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (!rateLimited) {
+      await Future.delayed(const Duration(milliseconds: 350));
+      try {
+        await ApiCache.recordNetworkCall();
+        final hlRes = await http
+            .get(Uri.parse('${ApiConfig.baseUrl}/highlights?matchId=${base.id}'), headers: ApiConfig.headers)
+            .timeout(const Duration(seconds: 8));
+        if (hlRes.statusCode == 200) {
+          final body = jsonDecode(hlRes.body);
+          final list = body is List ? body : (body is Map && body['data'] is List ? body['data'] : []);
+          final parsedClips = <HighlightClip>[];
+          for (final item in list) {
+            if (item is Map && item['url'] != null) {
+              parsedClips.add(HighlightClip(
+                title: (item['title'] ?? '${base.homeTeam} - ${base.awayTeam} összefoglaló').toString(),
+                url: item['url'].toString(),
+                thumbnail: item['imgUrl']?.toString(),
+              ));
             }
-            return 0;
           }
-
-          final p = readStat(hStats, ['possession']);
-          if (p > 0) possHome = p;
-          shotsH = readStat(hStats, ['total shots', 'shots']);
-          shotsA = readStat(aStats, ['total shots', 'shots']);
-          sotH = readStat(hStats, ['on target', 'shots on goal']);
-          sotA = readStat(aStats, ['on target', 'shots on goal']);
-          cornH = readStat(hStats, ['corner']);
-          cornA = readStat(aStats, ['corner']);
-          foulH = readStat(hStats, ['foul']);
-          foulA = readStat(aStats, ['foul']);
+          if (parsedClips.isNotEmpty) clips = parsedClips;
         }
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
 
-    try {
-      await ApiCache.recordNetworkCall();
-      final evRes = await http
-          .get(Uri.parse('${ApiConfig.baseUrl}/live-events/${base.id}'), headers: ApiConfig.headers)
-          .timeout(const Duration(seconds: 8));
-      if (evRes.statusCode == 200) {
-        final body = jsonDecode(evRes.body);
-        final list = body is List ? body : (body is Map && body['data'] is List ? body['data'] : []);
-        final parsedEvents = <MatchEvent>[];
-        for (final item in list) {
-          if (item is Map) {
-            final rawType = (item['type'] ?? '').toString().toLowerCase();
-            String type = 'goal';
-            if (rawType.contains('yellow')) {
-              type = 'yellow';
-            } else if (rawType.contains('red')) {
-              type = 'red';
-            } else if (!rawType.contains('goal') && !rawType.contains('pen')) {
-              continue;
-            }
-            final teamObj = item['team'] is Map ? item['team'] : {};
-            final teamName = (teamObj['name'] ?? '').toString();
-            final isHome = teamName.toLowerCase() == base.homeTeam.toLowerCase();
-            final playerObj = item['player'] is Map ? item['player'] : {};
-            final player = (playerObj['name'] ?? item['player'] ?? 'Játékos').toString();
-            final time = (item['time'] ?? '').toString();
-            parsedEvents.add(MatchEvent(
-              minute: time.endsWith("'") ? time : "$time'",
-              player: player,
-              type: type,
-              isHome: isHome,
-            ));
-          }
-        }
-        if (parsedEvents.isNotEmpty) events = parsedEvents;
-      }
-    } catch (_) {}
+    String? note;
+    if (rateLimited) {
+      note = 'API kéréskorlát (429) – várj pár másodpercet, majd koppints a frissítésre!';
+    } else if (current.events.isEmpty && current.shotsHome == 0 && current.shotsAway == 0) {
+      note = 'Ehhez a bajnoksághoz az API jelenleg csak az élő állást közli, részletes statisztikát nem.';
+    }
 
-    try {
-      await ApiCache.recordNetworkCall();
-      final hlRes = await http
-          .get(Uri.parse('${ApiConfig.baseUrl}/highlights?matchId=${base.id}'), headers: ApiConfig.headers)
-          .timeout(const Duration(seconds: 8));
-      if (hlRes.statusCode == 200) {
-        final body = jsonDecode(hlRes.body);
-        final list = body is List ? body : (body is Map && body['data'] is List ? body['data'] : []);
-        final parsedClips = <HighlightClip>[];
-        for (final item in list) {
-          if (item is Map && item['url'] != null) {
-            parsedClips.add(HighlightClip(
-              title: (item['title'] ?? '${base.homeTeam} - ${base.awayTeam} összefoglaló').toString(),
-              url: item['url'].toString(),
-              thumbnail: item['imgUrl']?.toString(),
-            ));
-          }
-        }
-        if (parsedClips.isNotEmpty) clips = parsedClips;
-      }
-    } catch (_) {}
+    final finalMatch = current.copyWith(highlights: clips, detailNote: note);
 
-    await ApiCache.put(
-      cacheKey,
-      jsonEncode({
-        'possessionHome': possHome,
-        'shotsHome': shotsH,
-        'shotsAway': shotsA,
-        'shotsOnTargetHome': sotH,
-        'shotsOnTargetAway': sotA,
-        'cornersHome': cornH,
-        'cornersAway': cornA,
-        'foulsHome': foulH,
-        'foulsAway': foulA,
-        'events': events.map((e) => e.toJson()).toList(),
-        'highlights': clips.map((c) => c.toJson()).toList(),
-      }),
-    );
+    if (!rateLimited) {
+      await ApiCache.put(
+        cacheKey,
+        jsonEncode({
+          'homeScore': finalMatch.homeScore,
+          'awayScore': finalMatch.awayScore,
+          'status': finalMatch.status,
+          'isLive': finalMatch.isLive,
+          'isFinished': finalMatch.isFinished,
+          'possessionHome': finalMatch.possessionHome,
+          'shotsHome': finalMatch.shotsHome,
+          'shotsAway': finalMatch.shotsAway,
+          'shotsOnTargetHome': finalMatch.shotsOnTargetHome,
+          'shotsOnTargetAway': finalMatch.shotsOnTargetAway,
+          'cornersHome': finalMatch.cornersHome,
+          'cornersAway': finalMatch.cornersAway,
+          'foulsHome': finalMatch.foulsHome,
+          'foulsAway': finalMatch.foulsAway,
+          'events': finalMatch.events.map((e) => e.toJson()).toList(),
+          'highlights': finalMatch.highlights.map((c) => c.toJson()).toList(),
+          'detailNote': note,
+        }),
+      );
+    }
 
-    return FetchResult(
-      fromCache: false,
-      data: base.copyWith(
-        possessionHome: possHome,
-        shotsHome: shotsH,
-        shotsAway: shotsA,
-        shotsOnTargetHome: sotH,
-        shotsOnTargetAway: sotA,
-        cornersHome: cornH,
-        cornersAway: cornA,
-        foulsHome: foulH,
-        foulsAway: foulA,
-        events: events,
-        highlights: clips,
-      ),
-    );
+    return FetchResult(fromCache: false, data: finalMatch);
   }
 
   static Future<FetchResult<List<StandingRow>>> fetchStandings(
@@ -762,6 +954,7 @@ const List<MatchData> sampleMatches = [
     awayScore: 0,
     status: 'VÉGE',
     isLive: false,
+    isFinished: true,
     possessionHome: 44,
     shotsHome: 10,
     shotsAway: 14,
