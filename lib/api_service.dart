@@ -3,43 +3,73 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+enum ApiProvider { highlightly, statpal }
+
 // --- TARTÓS API KONFIGURÁCIÓ ---
 class ApiConfig {
-  static const _keyPref = 'highlightly_api_key';
-  static const _rapidPref = 'highlightly_use_rapidapi';
+  static const _providerPref = 'zsolt_api_provider';
+  static const _hlKeyPref = 'highlightly_api_key';
+  static const _hlRapidPref = 'highlightly_use_rapidapi';
+  static const _spKeyPref = 'statpal_api_key';
 
-  static String apiKey = '';
+  static ApiProvider provider = ApiProvider.highlightly;
+  static String highlightlyKey = '';
   static bool useRapidApi = false;
+  static String statpalKey = '';
 
-  static bool get hasValidKey => apiKey.trim().isNotEmpty;
+  static bool get isStatPal => provider == ApiProvider.statpal;
+  static String get activeKey => isStatPal ? statpalKey : highlightlyKey;
+  static bool get hasValidKey => activeKey.trim().isNotEmpty;
+  static String get providerTag => isStatPal ? 'sp' : 'hl';
+  static String get providerName => isStatPal ? 'StatPal.io' : 'Highlightly';
 
-  static String get baseUrl => useRapidApi
+  static String get highlightlyBaseUrl => useRapidApi
       ? 'https://football-highlights-api.p.rapidapi.com'
       : 'https://soccer.highlightly.net';
 
-  static Map<String, String> get headers => {
-        'x-rapidapi-key': apiKey.trim(),
+  static Map<String, String> get highlightlyHeaders => {
+        'x-rapidapi-key': highlightlyKey.trim(),
         if (useRapidApi) 'x-rapidapi-host': 'football-highlights-api.p.rapidapi.com',
       };
 
+  static const String statpalBaseUrl = 'https://statpal.io/api/v1/soccer';
+
   static Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
-    apiKey = prefs.getString(_keyPref) ?? '';
-    useRapidApi = prefs.getBool(_rapidPref) ?? false;
+    final savedProv = prefs.getString(_providerPref) ?? 'highlightly';
+    provider = savedProv == 'statpal' ? ApiProvider.statpal : ApiProvider.highlightly;
+    highlightlyKey = prefs.getString(_hlKeyPref) ?? '';
+    useRapidApi = prefs.getBool(_hlRapidPref) ?? false;
+    statpalKey = prefs.getString(_spKeyPref) ?? '';
   }
 
-  static Future<void> save(String newKey, bool rapid) async {
-    apiKey = newKey.trim();
+  static Future<void> save({
+    required ApiProvider newProvider,
+    required String newHighlightlyKey,
+    required bool rapid,
+    required String newStatpalKey,
+  }) async {
+    provider = newProvider;
+    highlightlyKey = newHighlightlyKey.trim();
     useRapidApi = rapid;
+    statpalKey = newStatpalKey.trim();
+
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyPref, apiKey);
-    await prefs.setBool(_rapidPref, useRapidApi);
+    await prefs.setString(_providerPref, isStatPal ? 'statpal' : 'highlightly');
+    await prefs.setString(_hlKeyPref, highlightlyKey);
+    await prefs.setBool(_hlRapidPref, useRapidApi);
+    await prefs.setString(_spKeyPref, statpalKey);
   }
 
-  static Future<void> clear() async {
-    apiKey = '';
+  static Future<void> clearActiveKey() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_keyPref);
+    if (isStatPal) {
+      statpalKey = '';
+      await prefs.remove(_spKeyPref);
+    } else {
+      highlightlyKey = '';
+      await prefs.remove(_hlKeyPref);
+    }
   }
 }
 
@@ -223,6 +253,83 @@ class MatchData {
     this.detailNote,
   });
 
+  Map toCacheMap() => {
+        'id': id,
+        'league': league,
+        'homeTeam': homeTeam,
+        'awayTeam': awayTeam,
+        'homeTeamId': homeTeamId,
+        'awayTeamId': awayTeamId,
+        'homeLogo': homeLogo,
+        'awayLogo': awayLogo,
+        'homeScore': homeScore,
+        'awayScore': awayScore,
+        'status': status,
+        'isLive': isLive,
+        'isFinished': isFinished,
+        'kickoff': kickoff?.toIso8601String(),
+        'possessionHome': possessionHome,
+        'shotsHome': shotsHome,
+        'shotsAway': shotsAway,
+        'shotsOnTargetHome': shotsOnTargetHome,
+        'shotsOnTargetAway': shotsOnTargetAway,
+        'cornersHome': cornersHome,
+        'cornersAway': cornersAway,
+        'foulsHome': foulsHome,
+        'foulsAway': foulsAway,
+        'events': events.map((e) => e.toJson()).toList(),
+        'highlights': highlights.map((c) => c.toJson()).toList(),
+        'detailNote': detailNote,
+      };
+
+  factory MatchData.fromCacheMap(Map json) {
+    final homeName = (json['homeTeam'] ?? 'Hazai').toString();
+    final awayName = (json['awayTeam'] ?? 'Vendég').toString();
+    final evList = <MatchEvent>[];
+    if (json['events'] is List) {
+      for (final e in json['events']) {
+        if (e is Map) evList.add(MatchEvent.fromJson(e));
+      }
+    }
+    final clipList = <HighlightClip>[];
+    if (json['highlights'] is List) {
+      for (final c in json['highlights']) {
+        if (c is Map) clipList.add(HighlightClip.fromJson(c));
+      }
+    }
+    return MatchData(
+      id: (json['id'] ?? '').toString(),
+      league: (json['league'] ?? 'Egyéb liga').toString(),
+      homeTeam: homeName,
+      awayTeam: awayName,
+      homeTeamId: json['homeTeamId']?.toString(),
+      awayTeamId: json['awayTeamId']?.toString(),
+      homeLogo: json['homeLogo']?.toString(),
+      awayLogo: json['awayLogo']?.toString(),
+      homeColor: SportsApiService.colorFromName(homeName),
+      awayColor: SportsApiService.colorFromName(awayName),
+      homeScore: json['homeScore'] as int? ?? 0,
+      awayScore: json['awayScore'] as int? ?? 0,
+      status: (json['status'] ?? '').toString(),
+      isLive: json['isLive'] == true,
+      isFinished: json['isFinished'] == true,
+      kickoff: json['kickoff'] != null ? DateTime.tryParse(json['kickoff'].toString()) : null,
+      isFromApi: true,
+      possessionHome: json['possessionHome'] as int? ?? 50,
+      shotsHome: json['shotsHome'] as int? ?? 0,
+      shotsAway: json['shotsAway'] as int? ?? 0,
+      shotsOnTargetHome: json['shotsOnTargetHome'] as int? ?? 0,
+      shotsOnTargetAway: json['shotsOnTargetAway'] as int? ?? 0,
+      cornersHome: json['cornersHome'] as int? ?? 0,
+      cornersAway: json['cornersAway'] as int? ?? 0,
+      foulsHome: json['foulsHome'] as int? ?? 0,
+      foulsAway: json['foulsAway'] as int? ?? 0,
+      events: evList,
+      highlights: clipList,
+      detailNote: json['detailNote']?.toString(),
+    );
+  }
+
   MatchData copyWith({
     int? homeScore,
     int? awayScore,
@@ -298,15 +405,24 @@ class StandingRow {
   });
 }
 
-// --- HIGHLIGHTLY API SZOLGÁLTATÁS ---
-class HighlightlyService {
+// --- EGYESÍTETT SPORTS API SZOLGÁLTATÁS (HIGHLIGHTLY + STATPAL.IO) ---
+class SportsApiService {
   static List _asMapList(dynamic input) {
-    if (input is! List) return [];
-    final out = [];
-    for (final item in input) {
-      if (item is Map) out.add(item);
+    if (input is List) {
+      return input.whereType().toList();
     }
-    return out;
+    if (input is Map) {
+      return [input];
+    }
+    return [];
+  }
+
+  static dynamic _attr(Map m, List<String> keys) {
+    for (final k in keys) {
+      if (m.containsKey(k) && m[k] != null) return m[k];
+      if (m.containsKey('@$k') && m['@$k'] != null) return m['@$k'];
+    }
+    return null;
   }
 
   static Color colorFromName(String name) {
@@ -334,11 +450,8 @@ class HighlightlyService {
   static List<MatchData> _sortMatches(List<MatchData> list) {
     final sorted = List<MatchData>.of(list);
     sorted.sort((a, b) {
-      // 1. Élő meccsek legelöl
       if (a.isLive != b.isLive) return a.isLive ? -1 : 1;
-      // 2. Közelgő meccsek a befejezettek előtt
       if (a.isFinished != b.isFinished) return a.isFinished ? 1 : -1;
-      // 3. Időrend szerint
       if (a.kickoff != null && b.kickoff != null) {
         final cmp = a.kickoff!.compareTo(b.kickoff!);
         if (cmp != 0) return cmp;
@@ -348,6 +461,9 @@ class HighlightlyService {
     return sorted;
   }
 
+  // =========================================================================
+  // 1. NAPI MECCSEK LEKÉRÉSE
+  // =========================================================================
   static Future<FetchResult<List<MatchData>>> fetchMatches(
     DateTime date, {
     bool forceRefresh = false,
@@ -356,7 +472,7 @@ class HighlightlyService {
 
     final dateStr = formatDate(date);
     final todayStr = formatDate(DateTime.now());
-    final cacheKey = 'matches_all_$dateStr';
+    final cacheKey = '${ApiConfig.providerTag}_matches_$dateStr';
     final ttl = dateStr == todayStr
         ? Duration(minutes: ApiCache.cacheMinutes)
         : const Duration(hours: 12);
@@ -364,33 +480,48 @@ class HighlightlyService {
     if (!forceRefresh) {
       final cachedJson = await ApiCache.get(cacheKey, ttl);
       if (cachedJson != null) {
-        return FetchResult(data: _parseMatchListBody(cachedJson), fromCache: true);
+        final decoded = jsonDecode(cachedJson);
+        final list = _asMapList(decoded).map((e) => MatchData.fromCacheMap(e as Map)).toList();
+        return FetchResult(data: _sortMatches(list), fromCache: true);
       }
     }
 
+    final matches = ApiConfig.isStatPal
+        ? await _fetchStatPalMatches(date)
+        : await _fetchHighlightlyMatches(dateStr);
+
+    final sorted = _sortMatches(matches);
+    if (sorted.isNotEmpty) {
+      await ApiCache.put(cacheKey, jsonEncode(sorted.map((m) => m.toCacheMap()).toList()));
+    }
+    return FetchResult(data: sorted, fromCache: false);
+  }
+
+  // --- HIGHLIGHTLY MECCSEK ---
+  static Future<List<MatchData>> _fetchHighlightlyMatches(String dateStr) async {
     const int pageSize = 100;
     int offset = 0;
-    final allRawItems = [];
     final allMatches = <MatchData>[];
     final seenIds = <String>{};
 
-    // Lapozva lekérjük az adott nap ÖSSZES meccsét
     for (int page = 0; page < 10; page++) {
       final uri = Uri.parse(
-        '${ApiConfig.baseUrl}/matches?date=$dateStr&timezone=Europe/Budapest&limit=$pageSize&offset=$offset',
+        '${ApiConfig.highlightlyBaseUrl}/matches?date=$dateStr&timezone=Europe/Budapest&limit=$pageSize&offset=$offset',
       );
-      final response = await http.get(uri, headers: ApiConfig.headers).timeout(const Duration(seconds: 12));
+      final response = await http
+          .get(uri, headers: ApiConfig.highlightlyHeaders)
+          .timeout(const Duration(seconds: 12));
 
       if (response.statusCode == 401 || response.statusCode == 403) {
-        throw Exception('Érvénytelen API kulcs (${response.statusCode})');
+        throw Exception('Érvénytelen Highlightly API kulcs (${response.statusCode})');
       }
       if (response.statusCode == 429) {
         if (allMatches.isNotEmpty) break;
-        throw Exception('API kéréskorlát (429) – várj pár másodpercet');
+        throw Exception('Highlightly API kéréskorlát (429) – várj pár másodpercet');
       }
       if (response.statusCode != 200) {
         if (allMatches.isNotEmpty) break;
-        throw Exception('API hiba (${response.statusCode})');
+        throw Exception('Highlightly API hiba (${response.statusCode})');
       }
 
       await ApiCache.recordNetworkCall();
@@ -403,10 +534,9 @@ class HighlightlyService {
       final mapItems = _asMapList(rawList);
       int newlyAdded = 0;
       for (final item in mapItems) {
-        final mObj = _parseMatch(item as Map);
+        final mObj = _parseHighlightlyMatch(item as Map);
         if (!seenIds.contains(mObj.id)) {
           seenIds.add(mObj.id);
-          allRawItems.add(item);
           allMatches.add(mObj);
           newlyAdded++;
         }
@@ -424,23 +554,342 @@ class HighlightlyService {
       await Future.delayed(const Duration(milliseconds: 280));
     }
 
-    if (allRawItems.isNotEmpty) {
-      await ApiCache.put(cacheKey, jsonEncode(allRawItems));
+    return allMatches;
+  }
+
+  // --- STATPAL.IO MECCSEK ---
+  static Future<List<MatchData>> _fetchStatPalMatches(DateTime targetDate) async {
+    final key = Uri.encodeComponent(ApiConfig.statpalKey.trim());
+    final now = DateTime.now();
+    final todayOnly = DateTime(now.year, now.month, now.day);
+    final targetOnly = DateTime(targetDate.year, targetDate.month, targetDate.day);
+
+    final byId = <String, MatchData>{};
+
+    Future<List<MatchData>> callEndpoint(String path, {required bool filterByDate}) async {
+      final uri = Uri.parse('${ApiConfig.statpalBaseUrl}/$path?access_key=$key');
+      final res = await http.get(uri).timeout(const Duration(seconds: 12));
+
+      if (res.statusCode == 401 || res.statusCode == 403) {
+        throw Exception('Érvénytelen vagy lejárt StatPal API kulcs (${res.statusCode})');
+      }
+      if (res.statusCode == 429) {
+        throw Exception('StatPal kéréskorlát (429) – várj 15 másodpercet');
+      }
+      if (res.statusCode != 200) {
+        throw Exception('StatPal API hiba (${res.statusCode})');
+      }
+
+      await ApiCache.recordNetworkCall();
+      final decoded = jsonDecode(res.body);
+      return _parseStatPalMatchesPayload(decoded, targetDate, filterByDate: filterByDate);
     }
 
-    return FetchResult(data: _sortMatches(allMatches), fromCache: false);
+    if (targetOnly == todayOnly) {
+      // Ma: lekérjük az élő meccseket + mai menetrendet + mai eredményeket
+      final liveList = await callEndpoint('livescore', filterByDate: false);
+      for (final m in liveList) {
+        byId[m.id] = m;
+      }
+      try {
+        final schedList = await callEndpoint('upcoming-schedule', filterByDate: true);
+        for (final m in schedList) {
+          byId.putIfAbsent(m.id, () => m);
+        }
+      } catch (_) {}
+      try {
+        final resList = await callEndpoint('results', filterByDate: true);
+        for (final m in resList) {
+          byId.putIfAbsent(m.id, () => m);
+        }
+      } catch (_) {}
+    } else if (targetOnly.isAfter(todayOnly)) {
+      final schedList = await callEndpoint('upcoming-schedule', filterByDate: true);
+      for (final m in schedList) {
+        byId[m.id] = m;
+      }
+    } else {
+      final resList = await callEndpoint('results', filterByDate: true);
+      for (final m in resList) {
+        byId[m.id] = m;
+      }
+    }
+
+    return byId.values.toList();
   }
 
-  static List<MatchData> _parseMatchListBody(String body) {
-    final decoded = jsonDecode(body);
-    final rawList = decoded is List
-        ? decoded
-        : (decoded is Map && decoded['data'] is List ? decoded['data'] : []);
-    final list = _asMapList(rawList).map((e) => _parseMatch(e as Map)).toList();
-    return _sortMatches(list);
+  static List<MatchData> _parseStatPalMatchesPayload(
+    dynamic decoded,
+    DateTime targetDate, {
+    required bool filterByDate,
+  }) {
+    final results = <MatchData>[];
+    if (decoded is! Map) return results;
+
+    final root = decoded['livescore'] ??
+        decoded['scores'] ??
+        decoded['fixtures'] ??
+        decoded['schedule'] ??
+        decoded['results'] ??
+        decoded['data'] ??
+        decoded;
+
+    if (root is! Map) return results;
+
+    final leagues = _asMapList(root['league'] ?? root['leagues'] ?? root['tournament']);
+    for (final lItem in leagues) {
+      final lMap = lItem as Map;
+      final leagueName = (_attr(lMap, ['name', 'league_name']) ?? 'Egyéb liga').toString();
+      final matches = _asMapList(lMap['match'] ?? lMap['matches'] ?? lMap['fixture']);
+      for (final mItem in matches) {
+        final mMap = mItem as Map;
+        final dateRaw = (_attr(mMap, ['date', 'match_date', 'formatted_date']) ?? '').toString();
+        if (filterByDate && !_statPalMatchesDate(dateRaw, targetDate)) {
+          continue;
+        }
+        results.add(_parseStatPalSingleMatch(mMap, leagueName));
+      }
+    }
+
+    return results;
   }
 
-  static MatchData _parseMatch(Map m) {
+  static bool _statPalMatchesDate(String dateRaw, DateTime target) {
+    if (dateRaw.trim().isEmpty) return true;
+    final ymd = formatDate(target); // 2026-11-18
+    final dmyDot =
+        '${target.day.toString().padLeft(2, '0')}.${target.month.toString().padLeft(2, '0')}.${target.year}';
+    final dmySlash = dmyDot.replaceAll('.', '/');
+    return dateRaw.startsWith(ymd) ||
+        dateRaw.startsWith(dmyDot) ||
+        dateRaw.startsWith(dmySlash);
+  }
+
+  static DateTime? _parseStatPalDateTime(String dateRaw, String timeRaw) {
+    if (dateRaw.isEmpty) return null;
+    int? y, m, d;
+    if (dateRaw.contains('-')) {
+      final p = dateRaw.split('T')[0].split('-');
+      if (p.length >= 3) {
+        y = int.tryParse(p[0]);
+        m = int.tryParse(p[1]);
+        d = int.tryParse(p[2]);
+      }
+    } else if (dateRaw.contains('.') || dateRaw.contains('/')) {
+      final p = dateRaw.split(RegExp(r'[./]'));
+      if (p.length >= 3) {
+        d = int.tryParse(p[0]);
+        m = int.tryParse(p[1]);
+        y = int.tryParse(p[2]);
+      }
+    }
+    if (y == null || m == null || d == null) return null;
+    int hh = 0, mm = 0;
+    if (timeRaw.contains(':')) {
+      final tp = timeRaw.split(':');
+      hh = int.tryParse(tp[0]) ?? 0;
+      mm = int.tryParse(tp[1]) ?? 0;
+    }
+    return DateTime(y, m, d, hh, mm);
+  }
+
+  static MatchData _parseStatPalSingleMatch(Map m, String leagueName) {
+    final homeRaw = m['home'] ?? m['localteam'] ?? m['homeTeam'] ?? m['home_team'];
+    final awayRaw = m['away'] ?? m['visitorteam'] ?? m['awayTeam'] ?? m['away_team'];
+
+    final homeMap = homeRaw is Map ? homeRaw : {};
+    final awayMap = awayRaw is Map ? awayRaw : {};
+
+    final homeName = homeRaw is Map
+        ? (_attr(homeMap, ['name', 'team_name']) ?? 'Hazai').toString()
+        : (homeRaw?.toString() ?? 'Hazai');
+    final awayName = awayRaw is Map
+        ? (_attr(awayMap, ['name', 'team_name']) ?? 'Vendég').toString()
+        : (awayRaw?.toString() ?? 'Vendég');
+
+    final homeId = _attr(homeMap, ['id'])?.toString();
+    final awayId = _attr(awayMap, ['id'])?.toString();
+    final homeLogo = _attr(homeMap, ['logo', 'image', 'badge'])?.toString();
+    final awayLogo = _attr(awayMap, ['logo', 'image', 'badge'])?.toString();
+
+    int homeScore = int.tryParse('${_attr(homeMap, ['goals', 'score']) ?? ''}') ?? 0;
+    int awayScore = int.tryParse('${_attr(awayMap, ['goals', 'score']) ?? ''}') ?? 0;
+
+    final combinedScore = (_attr(m, ['ft_score', 'score']) ?? '').toString();
+    if (homeScore == 0 && awayScore == 0 && combinedScore.contains(RegExp(r'[-:]'))) {
+      final parts = combinedScore.replaceAll('[', '').replaceAll(']', '').split(RegExp(r'[-:]'));
+      if (parts.length >= 2) {
+        homeScore = int.tryParse(parts[0].trim()) ?? 0;
+        awayScore = int.tryParse(parts[1].trim()) ?? 0;
+      }
+    }
+
+    final statusRaw = (_attr(m, ['status', 'state', 'time_status']) ?? '').toString().trim();
+    final minuteRaw = (_attr(m, ['minute', 'timer', 'clock']) ?? '').toString().trim();
+    final dateRaw = (_attr(m, ['date', 'match_date', 'formatted_date']) ?? '').toString().trim();
+    final timeRaw = (_attr(m, ['time', 'start_time', 'kickoff']) ?? '').toString().trim();
+
+    final stLower = statusRaw.toLowerCase();
+    final isFinished = stLower == 'ft' ||
+        stLower == 'aet' ||
+        stLower == 'pen' ||
+        stLower.contains('finish') ||
+        stLower.contains('ended');
+
+    final isNumericMin = RegExp(r'^\d+(\+\d+)?$').hasMatch(stLower);
+    final isLive = !isFinished &&
+        (isNumericMin ||
+            stLower == 'ht' ||
+            stLower == 'live' ||
+            stLower == 'et' ||
+            stLower == '1h' ||
+            stLower == '2h' ||
+            stLower.contains('progress') ||
+            stLower.contains('half'));
+
+    String statusLabel;
+    if (isLive) {
+      if (stLower == 'ht') {
+        statusLabel = 'FÉLIDŐ';
+      } else if (minuteRaw.isNotEmpty) {
+        statusLabel = minuteRaw.endsWith("'") ? minuteRaw : "$minuteRaw'";
+      } else if (isNumericMin) {
+        statusLabel = "$statusRaw'";
+      } else {
+        statusLabel = 'ÉLŐ';
+      }
+    } else if (isFinished) {
+      statusLabel = 'VÉGE';
+    } else if (timeRaw.contains(':')) {
+      statusLabel = timeRaw.length >= 5 ? timeRaw.substring(0, 5) : timeRaw;
+    } else if (statusRaw.contains(':')) {
+      statusLabel = statusRaw.length >= 5 ? statusRaw.substring(0, 5) : statusRaw;
+    } else {
+      statusLabel = statusRaw.isNotEmpty ? statusRaw : 'Később';
+    }
+
+    final events = _parseStatPalEvents(m['events'], homeName);
+    final stats = _parseStatPalStats(m['stats'] ?? m['statistics']);
+
+    return MatchData(
+      id: (_attr(m, ['id', 'match_id', 'static_id']) ?? '${homeName}_$awayName').toString(),
+      league: leagueName,
+      homeTeam: homeName,
+      awayTeam: awayName,
+      homeTeamId: homeId,
+      awayTeamId: awayId,
+      homeLogo: homeLogo,
+      awayLogo: awayLogo,
+      homeColor: colorFromName(homeName),
+      awayColor: colorFromName(awayName),
+      homeScore: homeScore,
+      awayScore: awayScore,
+      status: statusLabel,
+      isLive: isLive,
+      isFinished: isFinished,
+      kickoff: _parseStatPalDateTime(dateRaw, timeRaw.isNotEmpty ? timeRaw : statusRaw),
+      isFromApi: true,
+      possessionHome: stats['poss'] ?? 50,
+      shotsHome: stats['shotsH'] ?? 0,
+      shotsAway: stats['shotsA'] ?? 0,
+      shotsOnTargetHome: stats['sotH'] ?? 0,
+      shotsOnTargetAway: stats['sotA'] ?? 0,
+      cornersHome: stats['cornH'] ?? 0,
+      cornersAway: stats['cornA'] ?? 0,
+      foulsHome: stats['foulH'] ?? 0,
+      foulsAway: stats['foulA'] ?? 0,
+      events: events,
+    );
+  }
+
+  static List<MatchEvent> _parseStatPalEvents(dynamic eventsNode, String homeTeamName) {
+    if (eventsNode == null) return const [];
+    final rawList = eventsNode is Map
+        ? _asMapList(eventsNode['event'] ?? eventsNode['data'])
+        : _asMapList(eventsNode);
+
+    final out = <MatchEvent>[];
+    for (final item in rawList) {
+      final ev = item as Map;
+      final typeRaw = (_attr(ev, ['type', 'event_type']) ?? '').toString().toLowerCase();
+      String type = 'goal';
+      if (typeRaw.contains('yellow')) {
+        type = 'yellow';
+      } else if (typeRaw.contains('red')) {
+        type = 'red';
+      } else if (!typeRaw.contains('goal') && !typeRaw.contains('pen')) {
+        continue;
+      }
+
+      final teamSide = (_attr(ev, ['team', 'side']) ?? '').toString().toLowerCase();
+      final isHome = teamSide == 'home' ||
+          teamSide == 'localteam' ||
+          teamSide == homeTeamName.toLowerCase();
+
+      final player = (_attr(ev, ['player', 'player_name', 'scorer']) ?? 'Játékos').toString();
+      final minute = (_attr(ev, ['minute', 'time']) ?? '').toString();
+      out.add(MatchEvent(
+        minute: minute.endsWith("'") ? minute : "$minute'",
+        player: player,
+        type: type,
+        isHome: isHome,
+      ));
+    }
+    return out;
+  }
+
+  static Map<String, int> _parseStatPalStats(dynamic statsNode) {
+    final result = <String, int>{};
+    if (statsNode is! Map) return result;
+
+    int extractInt(dynamic v) =>
+        int.tryParse((v ?? '0').toString().replaceAll('%', '').trim()) ?? 0;
+
+    // 1. Forma: { "home": { "possession": "56%", "shots": "10", ... }, "away": { ... } }
+    if (statsNode['home'] is Map && statsNode['away'] is Map) {
+      final h = statsNode['home'] as Map;
+      final a = statsNode['away'] as Map;
+      final poss = extractInt(_attr(h, ['possession', 'ball_possession']));
+      if (poss > 0) result['poss'] = poss;
+      result['shotsH'] = extractInt(_attr(h, ['shots', 'total_shots', 'shots_total']));
+      result['shotsA'] = extractInt(_attr(a, ['shots', 'total_shots', 'shots_total']));
+      result['sotH'] = extractInt(_attr(h, ['shots_on_target', 'on_target', 'shots_ongoal']));
+      result['sotA'] = extractInt(_attr(a, ['shots_on_target', 'on_target', 'shots_ongoal']));
+      result['cornH'] = extractInt(_attr(h, ['corners', 'corner_kicks']));
+      result['cornA'] = extractInt(_attr(a, ['corners', 'corner_kicks']));
+      result['foulH'] = extractInt(_attr(h, ['fouls', 'fouls_committed']));
+      result['foulA'] = extractInt(_attr(a, ['fouls', 'fouls_committed']));
+      return result;
+    }
+
+    // 2. Forma: { "stat": [ { "name": "Possession", "home": "56%", "away": "44%" } ] }
+    final list = _asMapList(statsNode['stat'] ?? statsNode['data']);
+    for (final item in list) {
+      final row = item as Map;
+      final name = (_attr(row, ['name', 'title', 'type']) ?? '').toString().toLowerCase();
+      final hv = extractInt(_attr(row, ['home', 'localteam']));
+      final av = extractInt(_attr(row, ['away', 'visitorteam']));
+      if (name.contains('possession')) {
+        if (hv > 0) result['poss'] = hv;
+      } else if (name.contains('on target') || name.contains('on goal')) {
+        result['sotH'] = hv;
+        result['sotA'] = av;
+      } else if (name.contains('shot')) {
+        result['shotsH'] = hv;
+        result['shotsA'] = av;
+      } else if (name.contains('corner')) {
+        result['cornH'] = hv;
+        result['cornA'] = av;
+      } else if (name.contains('foul')) {
+        result['foulH'] = hv;
+        result['foulA'] = av;
+      }
+    }
+    return result;
+  }
+
+  // --- HIGHLIGHTLY EGYEDI MECCS PARSER ---
+  static MatchData _parseHighlightlyMatch(Map m) {
     final homeMap = m['homeTeam'] is Map ? m['homeTeam'] as Map : {};
     final awayMap = m['awayTeam'] is Map ? m['awayTeam'] as Map : {};
     final leagueMap = m['league'] is Map ? m['league'] as Map : {};
@@ -499,11 +948,11 @@ class HighlightlyService {
     }
 
     final parsedEvents = m['events'] is List
-        ? _parseEventsList(m['events'] as List, homeName, homeId)
+        ? _parseHighlightlyEvents(m['events'] as List, homeName, homeId)
         : <MatchEvent>[];
 
     final statsParsed = m['statistics'] is List
-        ? _parseStatisticsList(m['statistics'] as List)
+        ? _parseHighlightlyStats(m['statistics'] as List)
         : null;
 
     return MatchData(
@@ -537,7 +986,7 @@ class HighlightlyService {
     );
   }
 
-  static Map<String, int>? _parseStatisticsList(List list) {
+  static Map<String, int>? _parseHighlightlyStats(List list) {
     if (list.length < 2 || list[0] is! Map || list[1] is! Map) return null;
     final hStats = (list[0]['statistics'] is List ? list[0]['statistics'] : []) as List;
     final aStats = (list[1]['statistics'] is List ? list[1]['statistics'] : []) as List;
@@ -572,7 +1021,11 @@ class HighlightlyService {
     };
   }
 
-  static List<MatchEvent> _parseEventsList(List list, String homeTeamName, String? homeTeamId) {
+  static List<MatchEvent> _parseHighlightlyEvents(
+    List list,
+    String homeTeamName,
+    String? homeTeamId,
+  ) {
     final parsed = <MatchEvent>[];
     for (final item in list) {
       if (item is Map) {
@@ -592,7 +1045,8 @@ class HighlightlyService {
             evTeamName.toLowerCase() == homeTeamName.toLowerCase();
 
         final playerObj = item['player'] is Map ? item['player'] as Map : {};
-        final player = (playerObj['name'] ?? item['player'] ?? item['playerName'] ?? 'Játékos').toString();
+        final player =
+            (playerObj['name'] ?? item['player'] ?? item['playerName'] ?? 'Játékos').toString();
         final time = (item['time'] ?? item['minute'] ?? '').toString();
         parsed.add(MatchEvent(
           minute: time.endsWith("'") ? time : "$time'",
@@ -605,6 +1059,9 @@ class HighlightlyService {
     return parsed;
   }
 
+  // =========================================================================
+  // 2. MECCS RÉSZLETEK FRISSÍTÉSE
+  // =========================================================================
   static Future<FetchResult<MatchData>> enrichMatchDetails(
     MatchData base, {
     bool forceRefresh = false,
@@ -613,48 +1070,116 @@ class HighlightlyService {
       return FetchResult(data: base, fromCache: false);
     }
 
-    final cacheKey = 'detail_${base.id}';
+    final cacheKey = '${ApiConfig.providerTag}_detail_${base.id}';
     final ttl = base.isFinished
         ? const Duration(hours: 12)
-        : const Duration(seconds: 45);
+        : Duration(seconds: ApiConfig.isStatPal ? 15 : 45);
 
     if (!forceRefresh) {
       final cachedJson = await ApiCache.get(cacheKey, ttl, savedWeight: 2);
       if (cachedJson != null) {
         final decoded = jsonDecode(cachedJson);
         if (decoded is Map) {
-          final evList = _asMapList(decoded['events'])
-              .map((e) => MatchEvent.fromJson(e as Map))
-              .toList();
-          final clipList = _asMapList(decoded['highlights'])
-              .map((e) => HighlightClip.fromJson(e as Map))
-              .toList();
-          return FetchResult(
-            fromCache: true,
-            data: base.copyWith(
-              homeScore: decoded['homeScore'] as int? ?? base.homeScore,
-              awayScore: decoded['awayScore'] as int? ?? base.awayScore,
-              status: decoded['status']?.toString() ?? base.status,
-              isLive: decoded['isLive'] as bool? ?? base.isLive,
-              isFinished: decoded['isFinished'] as bool? ?? base.isFinished,
-              possessionHome: decoded['possessionHome'] as int? ?? base.possessionHome,
-              shotsHome: decoded['shotsHome'] as int? ?? 0,
-              shotsAway: decoded['shotsAway'] as int? ?? 0,
-              shotsOnTargetHome: decoded['shotsOnTargetHome'] as int? ?? 0,
-              shotsOnTargetAway: decoded['shotsOnTargetAway'] as int? ?? 0,
-              cornersHome: decoded['cornersHome'] as int? ?? 0,
-              cornersAway: decoded['cornersAway'] as int? ?? 0,
-              foulsHome: decoded['foulsHome'] as int? ?? 0,
-              foulsAway: decoded['foulsAway'] as int? ?? 0,
-              events: evList,
-              highlights: clipList,
-              detailNote: decoded['detailNote']?.toString(),
-            ),
-          );
+          return FetchResult(fromCache: true, data: MatchData.fromCacheMap(decoded));
         }
       }
     }
 
+    if (ApiConfig.isStatPal) {
+      return _enrichStatPalDetails(base, cacheKey);
+    } else {
+      return _enrichHighlightlyDetails(base, cacheKey);
+    }
+  }
+
+  static Future<FetchResult<MatchData>> _enrichStatPalDetails(
+    MatchData base,
+    String cacheKey,
+  ) async {
+    final key = Uri.encodeComponent(ApiConfig.statpalKey.trim());
+    MatchData current = base;
+    bool rateLimited = false;
+
+    // 1. Élő adatfolyam újraletöltése (állás, játékidő, gólok, statisztikák egy kérésben)
+    try {
+      await ApiCache.recordNetworkCall();
+      final endpoint = base.isFinished ? 'results' : 'livescore';
+      final res = await http
+          .get(Uri.parse('${ApiConfig.statpalBaseUrl}/$endpoint?access_key=$key'))
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode == 429) {
+        rateLimited = true;
+      } else if (res.statusCode == 200) {
+        final list = _parseStatPalMatchesPayload(jsonDecode(res.body), DateTime.now(), filterByDate: false);
+        for (final m in list) {
+          if (m.id == base.id) {
+            current = current.copyWith(
+              homeScore: m.homeScore,
+              awayScore: m.awayScore,
+              status: m.status,
+              isLive: m.isLive,
+              isFinished: m.isFinished,
+              possessionHome: m.possessionHome,
+              shotsHome: m.shotsHome,
+              shotsAway: m.shotsAway,
+              shotsOnTargetHome: m.shotsOnTargetHome,
+              shotsOnTargetAway: m.shotsOnTargetAway,
+              cornersHome: m.cornersHome,
+              cornersAway: m.cornersAway,
+              foulsHome: m.foulsHome,
+              foulsAway: m.foulsAway,
+              events: m.events.isNotEmpty ? m.events : current.events,
+            );
+            break;
+          }
+        }
+      }
+    } catch (_) {}
+
+    // 2. Ha még nincs statisztika, megpróbáljuk a match-stats végpontot
+    if (!rateLimited && current.shotsHome == 0 && current.shotsAway == 0) {
+      try {
+        await ApiCache.recordNetworkCall();
+        final statRes = await http
+            .get(Uri.parse('${ApiConfig.statpalBaseUrl}/match-stats/${base.id}?access_key=$key'))
+            .timeout(const Duration(seconds: 8));
+        if (statRes.statusCode == 200) {
+          final body = jsonDecode(statRes.body);
+          if (body is Map) {
+            final stats = _parseStatPalStats(body['stats'] ?? body['statistics'] ?? body);
+            if (stats.isNotEmpty) {
+              current = current.copyWith(
+                possessionHome: stats['poss'] ?? current.possessionHome,
+                shotsHome: stats['shotsH'] ?? current.shotsHome,
+                shotsAway: stats['shotsA'] ?? current.shotsAway,
+                shotsOnTargetHome: stats['sotH'] ?? current.shotsOnTargetHome,
+                shotsOnTargetAway: stats['sotA'] ?? current.shotsOnTargetAway,
+                cornersHome: stats['cornH'] ?? current.cornersHome,
+                cornersAway: stats['cornA'] ?? current.cornersAway,
+                foulsHome: stats['foulH'] ?? current.foulsHome,
+                foulsAway: stats['foulA'] ?? current.foulsAway,
+              );
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    final note = rateLimited
+        ? 'StatPal kéréskorlát (429) – várj 15 másodpercet a következő frissítésig.'
+        : 'StatPal.io élő adatforrás • Videós összefoglalókhoz válts Highlightly kulcsra a ⚙️ menüben.';
+
+    final finalMatch = current.copyWith(detailNote: note);
+    if (!rateLimited) {
+      await ApiCache.put(cacheKey, jsonEncode(finalMatch.toCacheMap()));
+    }
+    return FetchResult(data: finalMatch, fromCache: false);
+  }
+
+  static Future<FetchResult<MatchData>> _enrichHighlightlyDetails(
+    MatchData base,
+    String cacheKey,
+  ) async {
     MatchData current = base;
     List<HighlightClip> clips = List.of(base.highlights);
     bool rateLimited = false;
@@ -662,7 +1187,10 @@ class HighlightlyService {
     try {
       await ApiCache.recordNetworkCall();
       final matchRes = await http
-          .get(Uri.parse('${ApiConfig.baseUrl}/matches/${base.id}'), headers: ApiConfig.headers)
+          .get(
+            Uri.parse('${ApiConfig.highlightlyBaseUrl}/matches/${base.id}'),
+            headers: ApiConfig.highlightlyHeaders,
+          )
           .timeout(const Duration(seconds: 9));
       if (matchRes.statusCode == 429) {
         rateLimited = true;
@@ -676,7 +1204,7 @@ class HighlightlyService {
                     ? (body['data'] as List)[0]
                     : body));
         if (obj is Map) {
-          final updated = _parseMatch(obj);
+          final updated = _parseHighlightlyMatch(obj);
           current = current.copyWith(
             homeScore: updated.homeScore,
             awayScore: updated.awayScore,
@@ -703,14 +1231,17 @@ class HighlightlyService {
       try {
         await ApiCache.recordNetworkCall();
         final statRes = await http
-            .get(Uri.parse('${ApiConfig.baseUrl}/match-statistics/${base.id}'), headers: ApiConfig.headers)
+            .get(
+              Uri.parse('${ApiConfig.highlightlyBaseUrl}/match-statistics/${base.id}'),
+              headers: ApiConfig.highlightlyHeaders,
+            )
             .timeout(const Duration(seconds: 8));
         if (statRes.statusCode == 429) {
           rateLimited = true;
         } else if (statRes.statusCode == 200) {
           final body = jsonDecode(statRes.body);
           final list = body is List ? body : (body is Map && body['data'] is List ? body['data'] : []);
-          final parsedStats = _parseStatisticsList(list);
+          final parsedStats = _parseHighlightlyStats(list);
           if (parsedStats != null) {
             current = current.copyWith(
               possessionHome: parsedStats['poss'],
@@ -733,14 +1264,17 @@ class HighlightlyService {
       try {
         await ApiCache.recordNetworkCall();
         final evRes = await http
-            .get(Uri.parse('${ApiConfig.baseUrl}/live-events/${base.id}'), headers: ApiConfig.headers)
+            .get(
+              Uri.parse('${ApiConfig.highlightlyBaseUrl}/live-events/${base.id}'),
+              headers: ApiConfig.highlightlyHeaders,
+            )
             .timeout(const Duration(seconds: 8));
         if (evRes.statusCode == 429) {
           rateLimited = true;
         } else if (evRes.statusCode == 200) {
           final body = jsonDecode(evRes.body);
           final list = body is List ? body : (body is Map && body['data'] is List ? body['data'] : []);
-          final parsedEvents = _parseEventsList(list, current.homeTeam, current.homeTeamId);
+          final parsedEvents = _parseHighlightlyEvents(list, current.homeTeam, current.homeTeamId);
           if (parsedEvents.isNotEmpty) {
             current = current.copyWith(events: parsedEvents);
           }
@@ -753,7 +1287,10 @@ class HighlightlyService {
       try {
         await ApiCache.recordNetworkCall();
         final hlRes = await http
-            .get(Uri.parse('${ApiConfig.baseUrl}/highlights?matchId=${base.id}'), headers: ApiConfig.headers)
+            .get(
+              Uri.parse('${ApiConfig.highlightlyBaseUrl}/highlights?matchId=${base.id}'),
+              headers: ApiConfig.highlightlyHeaders,
+            )
             .timeout(const Duration(seconds: 8));
         if (hlRes.statusCode == 200) {
           final body = jsonDecode(hlRes.body);
@@ -777,64 +1314,121 @@ class HighlightlyService {
     if (rateLimited) {
       note = 'API kéréskorlát (429) – várj pár másodpercet, majd koppints a frissítésre!';
     } else if (current.events.isEmpty && current.shotsHome == 0 && current.shotsAway == 0) {
-      note = 'Ehhez a bajnoksághoz az API jelenleg csak az élő állást közli, részletes statisztikát nem.';
+      note = 'Ehhez a bajnoksághoz a Highlightly jelenleg csak az élő állást közli.';
     }
 
     final finalMatch = current.copyWith(highlights: clips, detailNote: note);
-
     if (!rateLimited) {
-      await ApiCache.put(
-        cacheKey,
-        jsonEncode({
-          'homeScore': finalMatch.homeScore,
-          'awayScore': finalMatch.awayScore,
-          'status': finalMatch.status,
-          'isLive': finalMatch.isLive,
-          'isFinished': finalMatch.isFinished,
-          'possessionHome': finalMatch.possessionHome,
-          'shotsHome': finalMatch.shotsHome,
-          'shotsAway': finalMatch.shotsAway,
-          'shotsOnTargetHome': finalMatch.shotsOnTargetHome,
-          'shotsOnTargetAway': finalMatch.shotsOnTargetAway,
-          'cornersHome': finalMatch.cornersHome,
-          'cornersAway': finalMatch.cornersAway,
-          'foulsHome': finalMatch.foulsHome,
-          'foulsAway': finalMatch.foulsAway,
-          'events': finalMatch.events.map((e) => e.toJson()).toList(),
-          'highlights': finalMatch.highlights.map((c) => c.toJson()).toList(),
-          'detailNote': note,
-        }),
-      );
+      await ApiCache.put(cacheKey, jsonEncode(finalMatch.toCacheMap()));
     }
-
     return FetchResult(fromCache: false, data: finalMatch);
   }
 
+  // =========================================================================
+  // 3. TABELLÁK LEKÉRÉSE
+  // =========================================================================
+  static const highlightlyLeagueIds = {
+    'Premier League': 33973,
+    'Bajnokok Ligája': 2486,
+    'La Liga': 119924,
+    'Bundesliga': 67162,
+    'Serie A': 115669,
+  };
+
+  static const statpalLeagueSlugs = {
+    'Premier League': 'england-premier-league',
+    'Bajnokok Ligája': 'champions-league',
+    'La Liga': 'spain-la-liga',
+    'Bundesliga': 'germany-bundesliga',
+    'Serie A': 'italy-serie-a',
+  };
+
   static Future<FetchResult<List<StandingRow>>> fetchStandings(
-    int leagueId, {
+    String leagueName, {
     bool forceRefresh = false,
   }) async {
     if (!ApiConfig.hasValidKey) throw Exception('Nincs API kulcs');
 
-    final cacheKey = 'standings_$leagueId';
+    final cacheKey = '${ApiConfig.providerTag}_standings_$leagueName';
     if (!forceRefresh) {
       final cachedJson = await ApiCache.get(cacheKey, const Duration(hours: 2));
       if (cachedJson != null) {
-        return FetchResult(data: _parseStandingsBody(cachedJson), fromCache: true);
+        final rows = ApiConfig.isStatPal
+            ? _parseStatPalStandingsBody(cachedJson)
+            : _parseHighlightlyStandingsBody(cachedJson);
+        return FetchResult(data: rows, fromCache: true);
       }
     }
 
-    final uri = Uri.parse('${ApiConfig.baseUrl}/standings?leagueId=$leagueId');
-    final res = await http.get(uri, headers: ApiConfig.headers).timeout(const Duration(seconds: 10));
-    if (res.statusCode != 200) throw Exception('Tabella hiba (${res.statusCode})');
-
-    await ApiCache.recordNetworkCall();
-    await ApiCache.put(cacheKey, res.body);
-
-    return FetchResult(data: _parseStandingsBody(res.body), fromCache: false);
+    if (ApiConfig.isStatPal) {
+      final slug = statpalLeagueSlugs[leagueName];
+      if (slug == null) throw Exception('Ismeretlen liga');
+      final key = Uri.encodeComponent(ApiConfig.statpalKey.trim());
+      final uri = Uri.parse('${ApiConfig.statpalBaseUrl}/standings/$slug?access_key=$key');
+      final res = await http.get(uri).timeout(const Duration(seconds: 10));
+      if (res.statusCode != 200) throw Exception('StatPal tabella hiba (${res.statusCode})');
+      await ApiCache.recordNetworkCall();
+      await ApiCache.put(cacheKey, res.body);
+      return FetchResult(data: _parseStatPalStandingsBody(res.body), fromCache: false);
+    } else {
+      final id = highlightlyLeagueIds[leagueName];
+      if (id == null) throw Exception('Ismeretlen liga');
+      final uri = Uri.parse('${ApiConfig.highlightlyBaseUrl}/standings?leagueId=$id');
+      final res = await http
+          .get(uri, headers: ApiConfig.highlightlyHeaders)
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode != 200) throw Exception('Highlightly tabella hiba (${res.statusCode})');
+      await ApiCache.recordNetworkCall();
+      await ApiCache.put(cacheKey, res.body);
+      return FetchResult(data: _parseHighlightlyStandingsBody(res.body), fromCache: false);
+    }
   }
 
-  static List<StandingRow> _parseStandingsBody(String body) {
+  static List<StandingRow> _parseStatPalStandingsBody(String body) {
+    final decoded = jsonDecode(body);
+    if (decoded is! Map) return [];
+    final root = decoded['standings'] ?? decoded['data'] ?? decoded;
+    if (root is! Map) return [];
+    final leagues = _asMapList(root['league']);
+    if (leagues.isEmpty) return [];
+    final firstLeague = leagues[0] as Map;
+    final teams = _asMapList(firstLeague['team'] ?? firstLeague['standings']);
+
+    return teams.map((item) {
+      final r = item as Map;
+      final teamName = (_attr(r, ['name', 'team_name']) ?? 'Csapat').toString();
+      final pos = int.tryParse('${_attr(r, ['position', 'pos', 'rank']) ?? 0}') ?? 0;
+      final overall = r['overall'] is Map ? r['overall'] as Map : r;
+      final total = r['total'] is Map ? r['total'] as Map : r;
+      final played = int.tryParse('${_attr(overall, ['gp', 'played', 'games']) ?? 0}') ?? 0;
+      final gf = int.tryParse('${_attr(overall, ['gs', 'gf', 'scored']) ?? 0}') ?? 0;
+      final ga = int.tryParse('${_attr(overall, ['ga', 'against', 'received']) ?? 0}') ?? 0;
+      final gd = int.tryParse('${_attr(total, ['gd', 'goal_difference']) ?? (gf - ga)}') ?? (gf - ga);
+      final pts = int.tryParse('${_attr(total, ['p', 'pts', 'points']) ?? 0}') ?? 0;
+
+      String zone = 'none';
+      if (pos >= 1 && pos <= 4) {
+        zone = 'ucl';
+      } else if (pos == 5 || pos == 6) {
+        zone = 'uel';
+      } else if (pos >= 18) {
+        zone = 'rel';
+      }
+
+      return StandingRow(
+        pos: pos,
+        team: teamName,
+        logo: _attr(r, ['logo', 'image'])?.toString(),
+        color: colorFromName(teamName),
+        played: played,
+        gd: gd,
+        points: pts,
+        zone: zone,
+      );
+    }).toList();
+  }
+
+  static List<StandingRow> _parseHighlightlyStandingsBody(String body) {
     final decoded = jsonDecode(body);
     List rows = [];
     if (decoded is Map && decoded['groups'] is List && (decoded['groups'] as List).isNotEmpty) {
