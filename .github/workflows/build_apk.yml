@@ -15,6 +15,9 @@ jobs:
 
       - run: flutter create . --platforms=android
 
+      - name: Internet engedély hozzáadása
+        run: sed -i 's/<application/<uses-permission android:name="android.permission.INTERNET"\/>\n    <application/' android/app/src/main/AndroidManifest.xml
+
       - run: flutter pub get
 
       - name: Gradle tárolók javítása
@@ -53,5 +56,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-release
+          name: zsoltscores-release
           path: build/app/outputs/flutter-apk/app-release.apk
