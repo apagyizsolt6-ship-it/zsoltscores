@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'api_service.dart';
@@ -7,6 +8,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await ApiConfig.load();
   await ApiCache.loadStats();
+  await LogoCache.init();
   runApp(const ZsoltScoresApp());
 }
 
@@ -29,6 +31,81 @@ class ZsoltScoresApp extends StatelessWidget {
         useMaterial3: true,
       ),
       home: const MainShell(),
+    );
+  }
+}
+
+// --- HELYI GYORSÍTÓTÁRAZOTT CSAPATLOGÓ WIDGET ---
+class CachedTeamLogo extends StatefulWidget {
+  final String teamName;
+  final Color fallbackColor;
+  final String? logoUrl;
+  final double radius;
+  final bool showInitialsOnFallback;
+
+  const CachedTeamLogo({
+    super.key,
+    required this.teamName,
+    required this.fallbackColor,
+    required this.logoUrl,
+    this.radius = 22,
+    this.showInitialsOnFallback = true,
+  });
+
+  @override
+  State<CachedTeamLogo> createState() => _CachedTeamLogoState();
+}
+
+class _CachedTeamLogoState extends State<CachedTeamLogo> {
+  File? _localFile;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolveLogo();
+  }
+
+  @override
+  void didUpdateWidget(covariant CachedTeamLogo oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.logoUrl != widget.logoUrl) {
+      _localFile = null;
+      _resolveLogo();
+    }
+  }
+
+  Future<void> _resolveLogo() async {
+    if (widget.logoUrl == null || widget.logoUrl!.trim().isEmpty) return;
+    final file = await LogoCache.getOrDownload(widget.logoUrl);
+    if (mounted && file != null) {
+      setState(() => _localFile = file);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final name = widget.teamName.trim();
+    final initials = name.length >= 2 ? name.substring(0, 2).toUpperCase() : name.toUpperCase();
+    final imgSize = widget.radius * 1.55;
+
+    return CircleAvatar(
+      radius: widget.radius,
+      backgroundColor: widget.fallbackColor,
+      child: _localFile != null
+          ? ClipOval(
+              child: Image.file(
+                _localFile!,
+                width: imgSize,
+                height: imgSize,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => widget.showInitialsOnFallback
+                    ? Text(initials, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
+                    : const SizedBox(),
+              ),
+            )
+          : (widget.showInitialsOnFallback
+              ? Text(initials, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
+              : const SizedBox()),
     );
   }
 }
@@ -116,12 +193,17 @@ class _MainShellState extends State<MainShell> {
     });
   }
 
-  void _openApiSettingsDialog() {
+  void _openApiSettingsDialog() async {
+    await LogoCache.refreshCount();
+    if (!mounted) return;
+
     ApiProvider tempProvider = ApiConfig.provider;
     final hlController = TextEditingController(text: ApiConfig.highlightlyKey);
     final spController = TextEditingController(text: ApiConfig.statpalKey);
     bool tempRapid = ApiConfig.useRapidApi;
     int tempTtl = ApiCache.cacheMinutes;
+    String? usageInfo;
+    bool checkingUsage = false;
 
     showDialog(
       context: context,
@@ -164,7 +246,7 @@ class _MainShellState extends State<MainShell> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: ChoiceChip(
-                          label: const Center(child: Text('StatPal.io', style: TextStyle(fontSize: 12))),
+                          label: const Center(child: Text('StatPal V2', style: TextStyle(fontSize: 12))),
                           selected: isSp,
                           selectedColor: const Color(0xFF00B0FF),
                           backgroundColor: const Color(0xFF0B132B),
@@ -179,7 +261,7 @@ class _MainShellState extends State<MainShell> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    isSp ? 'StatPal.io access_key:' : 'Highlightly API kulcs:',
+                    isSp ? 'StatPal.io access_key (UUID):' : 'Highlightly API kulcs:',
                     style: const TextStyle(fontSize: 12, color: Colors.white70),
                   ),
                   const SizedBox(height: 6),
@@ -213,21 +295,56 @@ class _MainShellState extends State<MainShell> {
                       value: tempRapid,
                       onChanged: (val) => setDialogState(() => tempRapid = val),
                     )
-                  else
+                  else ...[
                     Container(
+                      width: double.infinity,
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
                         color: const Color(0xFF00B0FF).withAlpha(25),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: const Color(0xFF00B0FF).withAlpha(90)),
                       ),
-                      child: const Text(
-                        'statpal.io/api/v1/soccer • 15 mp-es élő frissítés, részletes meccsstatisztikák és tabellák.',
-                        style: TextStyle(fontSize: 11, color: Colors.white70),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'statpal.io/api/v2/soccer • 15 mp-es élő frissítés',
+                            style: TextStyle(fontSize: 11, color: Colors.white70),
+                          ),
+                          const SizedBox(height: 6),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: checkingUsage
+                                  ? null
+                                  : () async {
+                                      setDialogState(() => checkingUsage = true);
+                                      final info = await SportsApiService.fetchStatPalDailyUsage(spController.text);
+                                      setDialogState(() {
+                                        usageInfo = info;
+                                        checkingUsage = false;
+                                      });
+                                    },
+                              icon: const Icon(Icons.analytics_outlined, size: 16, color: Color(0xFF00E676)),
+                              label: Text(
+                                checkingUsage ? 'Lekérdezés...' : 'Mai StatPal keret ellenőrzése (ingyenes)',
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                            ),
+                          ),
+                          if (usageInfo != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              usageInfo!,
+                              style: const TextStyle(fontSize: 11, color: Color(0xFF00E676), fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
+                  ],
                   const Divider(color: Colors.white12, height: 18),
-                  const Text('Helyi tároló (API keretkímélő)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  const Text('Helyi tároló (API és logó kímélő)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                   const SizedBox(height: 8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -274,6 +391,12 @@ class _MainShellState extends State<MainShell> {
                             const Text('Megspórolt', style: TextStyle(fontSize: 10, color: Colors.white60)),
                           ],
                         ),
+                        Column(
+                          children: [
+                            Text('${LogoCache.savedLogosCount}', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00B0FF), fontSize: 15)),
+                            const Text('Mentett logó', style: TextStyle(fontSize: 10, color: Colors.white60)),
+                          ],
+                        ),
                       ],
                     ),
                   ),
@@ -282,15 +405,17 @@ class _MainShellState extends State<MainShell> {
                     width: double.infinity,
                     child: OutlinedButton.icon(
                       onPressed: () async {
-                        final cleared = await ApiCache.clearAll();
+                        final clearedJson = await ApiCache.clearAll();
+                        final clearedLogos = await LogoCache.clearAll();
+                        setDialogState(() {});
                         if (ctx.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Tároló ürítve ($cleared mentett elem törölve).')),
+                            SnackBar(content: Text('Tároló ürítve ($clearedJson adat, $clearedLogos mentett logó törölve).')),
                           );
                         }
                       },
                       icon: const Icon(Icons.delete_sweep, size: 18, color: Color(0xFF00B0FF)),
-                      label: const Text('Tároló ürítése', style: TextStyle(fontSize: 12)),
+                      label: const Text('Adat- és logótároló ürítése', style: TextStyle(fontSize: 12)),
                     ),
                   ),
                 ],
@@ -721,26 +846,11 @@ class MatchCard extends StatelessWidget {
   }
 
   Widget _teamBadge(String name, Color color, String? logoUrl) {
-    final initials = name.length >= 2 ? name.substring(0, 2).toUpperCase() : name.toUpperCase();
     return SizedBox(
       width: 100,
       child: Column(
         children: [
-          CircleAvatar(
-            radius: 22,
-            backgroundColor: color,
-            child: logoUrl != null && logoUrl.isNotEmpty
-                ? ClipOval(
-                    child: Image.network(
-                      logoUrl,
-                      width: 34,
-                      height: 34,
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => Text(initials, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    ),
-                  )
-                : Text(initials, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          ),
+          CachedTeamLogo(teamName: name, fallbackColor: color, logoUrl: logoUrl, radius: 22),
           const SizedBox(height: 6),
           Text(name, textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
         ],
@@ -909,12 +1019,12 @@ class _StandingsTabState extends State<StandingsTab> {
                   child: Row(
                     children: [
                       SizedBox(width: 24, child: Text('${r.pos}.', style: const TextStyle(fontWeight: FontWeight.bold))),
-                      CircleAvatar(
-                        radius: 10,
-                        backgroundColor: r.color,
-                        child: r.logo != null && r.logo!.isNotEmpty
-                            ? ClipOval(child: Image.network(r.logo!, width: 18, height: 18, errorBuilder: (_, __, ___) => const SizedBox()))
-                            : null,
+                      CachedTeamLogo(
+                        teamName: r.team,
+                        fallbackColor: r.color,
+                        logoUrl: r.logo,
+                        radius: 11,
+                        showInitialsOnFallback: false,
                       ),
                       const SizedBox(width: 10),
                       Expanded(child: Text(r.team, style: const TextStyle(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
@@ -1078,14 +1188,30 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  Expanded(child: Text(_match.homeTeam, textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold))),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        CachedTeamLogo(teamName: _match.homeTeam, fallbackColor: _match.homeColor, logoUrl: _match.homeLogo, radius: 22),
+                        const SizedBox(height: 6),
+                        Text(_match.homeTeam, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
                   Column(
                     children: [
                       Text('${_match.homeScore} : ${_match.awayScore}', style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Color(0xFF00E676))),
                       Text(_match.isLive ? 'ÉLŐ • ${_match.status}' : _match.status, style: const TextStyle(fontSize: 12, color: Colors.white70)),
                     ],
                   ),
-                  Expanded(child: Text(_match.awayTeam, textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold))),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        CachedTeamLogo(teamName: _match.awayTeam, fallbackColor: _match.awayColor, logoUrl: _match.awayLogo, radius: 22),
+                        const SizedBox(height: 6),
+                        Text(_match.awayTeam, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1162,7 +1288,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                             padding: const EdgeInsets.all(24),
                             child: Text(
                               ApiConfig.isStatPal
-                                  ? 'A StatPal.io szöveges élő adatokat és statisztikákat ad;\nvideós összefoglalókhoz válts Highlightly kulcsra a ⚙️ menüben.'
+                                  ? 'A StatPal V2 szöveges élő adatokat és statisztikákat ad;\nvideós összefoglalókhoz válts Highlightly kulcsra a ⚙️ menüben.'
                                   : 'Ehhez a meccshez még nem érhető el videós összefoglaló.',
                               textAlign: TextAlign.center,
                               style: const TextStyle(color: Colors.white60, height: 1.5),
