@@ -74,7 +74,7 @@ class ApiConfig {
   }
 }
 
-// --- HELYI TÁROLÓ (CACHE) AZ API KERET VÉDELMÉRE ---
+// --- HELYI TÁROLÓ (CACHE) ---
 class ApiCache {
   static const _prefix = 'zsolt_cache_';
   static const _savedKey = 'zsolt_cache_saved_count';
@@ -114,14 +114,14 @@ class ApiCache {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString('$_prefix$key');
     if (raw == null) return null;
-
     try {
-      final decoded = jsonDecode(raw) as Map<String, dynamic>;
-      final ts = decoded['ts'] as int? ?? 0;
-      final age = DateTime.now().millisecondsSinceEpoch - ts;
-      if (age <= maxAge.inMilliseconds) {
-        await recordSavedCall(savedWeight);
-        return decoded['data'] as String?;
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        final ts = decoded['ts'] as int? ?? 0;
+        if (DateTime.now().millisecondsSinceEpoch - ts <= maxAge.inMilliseconds) {
+          await recordSavedCall(savedWeight);
+          return decoded['data'] as String?;
+        }
       }
     } catch (_) {}
     return null;
@@ -129,11 +129,10 @@ class ApiCache {
 
   static Future<void> put(String key, String data) async {
     final prefs = await SharedPreferences.getInstance();
-    final payload = jsonEncode({
-      'ts': DateTime.now().millisecondsSinceEpoch,
-      'data': data,
-    });
-    await prefs.setString('$_prefix$key', payload);
+    await prefs.setString(
+      '$_prefix$key',
+      jsonEncode({'ts': DateTime.now().millisecondsSinceEpoch, 'data': data}),
+    );
   }
 
   static Future<int> clearAll() async {
@@ -149,7 +148,6 @@ class ApiCache {
 class FetchResult<T> {
   final T data;
   final bool fromCache;
-
   const FetchResult({required this.data, required this.fromCache});
 }
 
@@ -157,7 +155,7 @@ class FetchResult<T> {
 class MatchEvent {
   final String minute;
   final String player;
-  final String type; // 'goal', 'yellow', 'red'
+  final String type;
   final bool isHome;
 
   const MatchEvent({
@@ -167,14 +165,9 @@ class MatchEvent {
     required this.isHome,
   });
 
-  Map<String, dynamic> toJson() => {
-        'minute': minute,
-        'player': player,
-        'type': type,
-        'isHome': isHome,
-      };
+  Map toJson() => {'minute': minute, 'player': player, 'type': type, 'isHome': isHome};
 
-  factory MatchEvent.fromJson(Map<String, dynamic> json) => MatchEvent(
+  factory MatchEvent.fromJson(Map json) => MatchEvent(
         minute: (json['minute'] ?? '').toString(),
         player: (json['player'] ?? '').toString(),
         type: (json['type'] ?? 'goal').toString(),
@@ -186,27 +179,15 @@ class HighlightClip {
   final String title;
   final String url;
   final String? thumbnail;
-  final String? source;
 
-  const HighlightClip({
-    required this.title,
-    required this.url,
-    this.thumbnail,
-    this.source,
-  });
+  const HighlightClip({required this.title, required this.url, this.thumbnail});
 
-  Map<String, dynamic> toJson() => {
-        'title': title,
-        'url': url,
-        'thumbnail': thumbnail,
-        'source': source,
-      };
+  Map toJson() => {'title': title, 'url': url, 'thumbnail': thumbnail};
 
-  factory HighlightClip.fromJson(Map<String, dynamic> json) => HighlightClip(
+  factory HighlightClip.fromJson(Map json) => HighlightClip(
         title: (json['title'] ?? '').toString(),
         url: (json['url'] ?? '').toString(),
         thumbnail: json['thumbnail']?.toString(),
-        source: json['source']?.toString(),
       );
 }
 
@@ -311,12 +292,9 @@ class StandingRow {
   final String? logo;
   final Color color;
   final int played;
-  final int won;
-  final int drawn;
-  final int lost;
   final int gd;
   final int points;
-  final String zone; // 'ucl', 'uel', 'rel', 'none'
+  final String zone;
 
   const StandingRow({
     required this.pos,
@@ -324,26 +302,21 @@ class StandingRow {
     this.logo,
     required this.color,
     required this.played,
-    required this.won,
-    required this.drawn,
-    required this.lost,
     required this.gd,
     required this.points,
     required this.zone,
   });
 }
 
-// --- HIGHLIGHTLY API SZOLGÁLTATÁS (TÁROLÓVAL) ---
+// --- HIGHLIGHTLY API SZOLGÁLTATÁS ---
 class HighlightlyService {
-  static List> _asMapList(dynamic input) {
+  static List _asMapList(dynamic input) {
     if (input is! List) return [];
-    final result = >[];
+    final out = [];
     for (final item in input) {
-      if (item is Map) {
-        result.add(Map<String, dynamic>.from(item));
-      }
+      if (item is Map) out.add(item);
     }
-    return result;
+    return out;
   }
 
   static Color colorFromName(String name) {
@@ -372,9 +345,7 @@ class HighlightlyService {
     DateTime date, {
     bool forceRefresh = false,
   }) async {
-    if (!ApiConfig.hasValidKey) {
-      throw Exception('Nincs megadva API kulcs');
-    }
+    if (!ApiConfig.hasValidKey) throw Exception('Nincs megadva API kulcs');
 
     final dateStr = formatDate(date);
     final todayStr = formatDate(DateTime.now());
@@ -386,17 +357,12 @@ class HighlightlyService {
     if (!forceRefresh) {
       final cachedJson = await ApiCache.get(cacheKey, ttl);
       if (cachedJson != null) {
-        return FetchResult(
-          data: _parseMatchListBody(cachedJson),
-          fromCache: true,
-        );
+        return FetchResult(data: _parseMatchListBody(cachedJson), fromCache: true);
       }
     }
 
     final uri = Uri.parse('${ApiConfig.baseUrl}/matches?date=$dateStr&limit=50');
-    final response = await http
-        .get(uri, headers: ApiConfig.headers)
-        .timeout(const Duration(seconds: 12));
+    final response = await http.get(uri, headers: ApiConfig.headers).timeout(const Duration(seconds: 12));
 
     if (response.statusCode == 401 || response.statusCode == 403) {
       throw Exception('Érvénytelen API kulcs (${response.statusCode})');
@@ -408,10 +374,7 @@ class HighlightlyService {
     await ApiCache.recordNetworkCall();
     await ApiCache.put(cacheKey, response.body);
 
-    return FetchResult(
-      data: _parseMatchListBody(response.body),
-      fromCache: false,
-    );
+    return FetchResult(data: _parseMatchListBody(response.body), fromCache: false);
   }
 
   static List<MatchData> _parseMatchListBody(String body) {
@@ -419,15 +382,14 @@ class HighlightlyService {
     final rawList = decoded is List
         ? decoded
         : (decoded is Map && decoded['data'] is List ? decoded['data'] : []);
-
-    return _asMapList(rawList).map(_parseMatch).toList();
+    return _asMapList(rawList).map((e) => _parseMatch(e as Map)).toList();
   }
 
-  static MatchData _parseMatch(Map<String, dynamic> m) {
-    final homeMap = m['homeTeam'] is Map ? m['homeTeam'] as Map<String, dynamic> : {};
-    final awayMap = m['awayTeam'] is Map ? m['awayTeam'] as Map<String, dynamic> : {};
-    final leagueMap = m['league'] is Map ? m['league'] as Map<String, dynamic> : {};
-    final stateMap = m['state'] is Map ? m['state'] as Map<String, dynamic> : {};
+  static MatchData _parseMatch(Map m) {
+    final homeMap = m['homeTeam'] is Map ? m['homeTeam'] as Map : {};
+    final awayMap = m['awayTeam'] is Map ? m['awayTeam'] as Map : {};
+    final leagueMap = m['league'] is Map ? m['league'] as Map : {};
+    final stateMap = m['state'] is Map ? m['state'] as Map : {};
 
     final homeName = (homeMap['name'] ?? m['homeTeam'] ?? 'Hazai').toString();
     final awayName = (awayMap['name'] ?? m['awayTeam'] ?? 'Vendég').toString();
@@ -451,7 +413,7 @@ class HighlightlyService {
     final descLower = desc.toLowerCase();
     final clock = stateMap['clock']?.toString() ?? '';
 
-    final bool isLive = descLower.contains('progress') ||
+    final isLive = descLower.contains('progress') ||
         descLower.contains('half') ||
         descLower.contains('live') ||
         descLower.contains('extra');
@@ -513,29 +475,31 @@ class HighlightlyService {
     if (!forceRefresh) {
       final cachedJson = await ApiCache.get(cacheKey, ttl, savedWeight: 3);
       if (cachedJson != null) {
-        final map = jsonDecode(cachedJson) as Map<String, dynamic>;
-        final evList = _asMapList(map['events'])
-            .map(MatchEvent.fromJson)
-            .toList();
-        final clipList = _asMapList(map['highlights'])
-            .map(HighlightClip.fromJson)
-            .toList();
-        return FetchResult(
-          fromCache: true,
-          data: base.copyWith(
-            possessionHome: map['possessionHome'] as int? ?? base.possessionHome,
-            shotsHome: map['shotsHome'] as int? ?? 0,
-            shotsAway: map['shotsAway'] as int? ?? 0,
-            shotsOnTargetHome: map['shotsOnTargetHome'] as int? ?? 0,
-            shotsOnTargetAway: map['shotsOnTargetAway'] as int? ?? 0,
-            cornersHome: map['cornersHome'] as int? ?? 0,
-            cornersAway: map['cornersAway'] as int? ?? 0,
-            foulsHome: map['foulsHome'] as int? ?? 0,
-            foulsAway: map['foulsAway'] as int? ?? 0,
-            events: evList,
-            highlights: clipList,
-          ),
-        );
+        final decoded = jsonDecode(cachedJson);
+        if (decoded is Map) {
+          final evList = _asMapList(decoded['events'])
+              .map((e) => MatchEvent.fromJson(e as Map))
+              .toList();
+          final clipList = _asMapList(decoded['highlights'])
+              .map((e) => HighlightClip.fromJson(e as Map))
+              .toList();
+          return FetchResult(
+            fromCache: true,
+            data: base.copyWith(
+              possessionHome: decoded['possessionHome'] as int? ?? base.possessionHome,
+              shotsHome: decoded['shotsHome'] as int? ?? 0,
+              shotsAway: decoded['shotsAway'] as int? ?? 0,
+              shotsOnTargetHome: decoded['shotsOnTargetHome'] as int? ?? 0,
+              shotsOnTargetAway: decoded['shotsOnTargetAway'] as int? ?? 0,
+              cornersHome: decoded['cornersHome'] as int? ?? 0,
+              cornersAway: decoded['cornersAway'] as int? ?? 0,
+              foulsHome: decoded['foulsHome'] as int? ?? 0,
+              foulsAway: decoded['foulsAway'] as int? ?? 0,
+              events: evList,
+              highlights: clipList,
+            ),
+          );
+        }
       }
     }
 
@@ -558,9 +522,7 @@ class HighlightlyService {
           .timeout(const Duration(seconds: 8));
       if (statRes.statusCode == 200) {
         final body = jsonDecode(statRes.body);
-        final list = body is List
-            ? body
-            : (body is Map && body['data'] is List ? body['data'] : []);
+        final list = body is List ? body : (body is Map && body['data'] is List ? body['data'] : []);
         if (list.length >= 2 && list[0] is Map && list[1] is Map) {
           final hStats = (list[0]['statistics'] is List ? list[0]['statistics'] : []) as List;
           final aStats = (list[1]['statistics'] is List ? list[1]['statistics'] : []) as List;
@@ -599,9 +561,7 @@ class HighlightlyService {
           .timeout(const Duration(seconds: 8));
       if (evRes.statusCode == 200) {
         final body = jsonDecode(evRes.body);
-        final list = body is List
-            ? body
-            : (body is Map && body['data'] is List ? body['data'] : []);
+        final list = body is List ? body : (body is Map && body['data'] is List ? body['data'] : []);
         final parsedEvents = <MatchEvent>[];
         for (final item in list) {
           if (item is Map) {
@@ -639,9 +599,7 @@ class HighlightlyService {
           .timeout(const Duration(seconds: 8));
       if (hlRes.statusCode == 200) {
         final body = jsonDecode(hlRes.body);
-        final list = body is List
-            ? body
-            : (body is Map && body['data'] is List ? body['data'] : []);
+        final list = body is List ? body : (body is Map && body['data'] is List ? body['data'] : []);
         final parsedClips = <HighlightClip>[];
         for (final item in list) {
           if (item is Map && item['url'] != null) {
@@ -649,7 +607,6 @@ class HighlightlyService {
               title: (item['title'] ?? '${base.homeTeam} - ${base.awayTeam} összefoglaló').toString(),
               url: item['url'].toString(),
               thumbnail: item['imgUrl']?.toString(),
-              source: item['source']?.toString(),
             ));
           }
         }
@@ -696,39 +653,29 @@ class HighlightlyService {
     int leagueId, {
     bool forceRefresh = false,
   }) async {
-    if (!ApiConfig.hasValidKey) {
-      throw Exception('Nincs API kulcs');
-    }
+    if (!ApiConfig.hasValidKey) throw Exception('Nincs API kulcs');
 
     final cacheKey = 'standings_$leagueId';
     if (!forceRefresh) {
       final cachedJson = await ApiCache.get(cacheKey, const Duration(hours: 2));
       if (cachedJson != null) {
-        return FetchResult(
-          data: _parseStandingsBody(cachedJson),
-          fromCache: true,
-        );
+        return FetchResult(data: _parseStandingsBody(cachedJson), fromCache: true);
       }
     }
 
     final uri = Uri.parse('${ApiConfig.baseUrl}/standings?leagueId=$leagueId');
     final res = await http.get(uri, headers: ApiConfig.headers).timeout(const Duration(seconds: 10));
-    if (res.statusCode != 200) {
-      throw Exception('Tabella hiba (${res.statusCode})');
-    }
+    if (res.statusCode != 200) throw Exception('Tabella hiba (${res.statusCode})');
 
     await ApiCache.recordNetworkCall();
     await ApiCache.put(cacheKey, res.body);
 
-    return FetchResult(
-      data: _parseStandingsBody(res.body),
-      fromCache: false,
-    );
+    return FetchResult(data: _parseStandingsBody(res.body), fromCache: false);
   }
 
   static List<StandingRow> _parseStandingsBody(String body) {
     final decoded = jsonDecode(body);
-    List<dynamic> rows = [];
+    List rows = [];
     if (decoded is Map && decoded['groups'] is List && (decoded['groups'] as List).isNotEmpty) {
       final firstGroup = decoded['groups'][0];
       if (firstGroup is Map && firstGroup['standings'] is List) {
@@ -740,15 +687,13 @@ class HighlightlyService {
       rows = decoded;
     }
 
-    return _asMapList(rows).map((r) {
-      final teamMap = r['team'] is Map ? r['team'] as Map<String, dynamic> : {};
-      final totalMap = r['total'] is Map ? r['total'] as Map<String, dynamic> : r;
+    return _asMapList(rows).map((item) {
+      final r = item as Map;
+      final teamMap = r['team'] is Map ? r['team'] as Map : {};
+      final totalMap = r['total'] is Map ? r['total'] as Map : r;
       final teamName = (teamMap['name'] ?? r['teamName'] ?? 'Csapat').toString();
       final pos = int.tryParse('${r['position'] ?? r['pos'] ?? 0}') ?? 0;
       final played = int.tryParse('${totalMap['games'] ?? totalMap['played'] ?? 0}') ?? 0;
-      final won = int.tryParse('${totalMap['wins'] ?? totalMap['won'] ?? 0}') ?? 0;
-      final drawn = int.tryParse('${totalMap['draws'] ?? totalMap['drawn'] ?? 0}') ?? 0;
-      final lost = int.tryParse('${totalMap['loses'] ?? totalMap['lost'] ?? 0}') ?? 0;
       final gf = int.tryParse('${totalMap['scoredGoals'] ?? 0}') ?? 0;
       final ga = int.tryParse('${totalMap['receivedGoals'] ?? 0}') ?? 0;
       final gd = int.tryParse('${r['goalDifference'] ?? (gf - ga)}') ?? (gf - ga);
@@ -769,9 +714,6 @@ class HighlightlyService {
         logo: teamMap['logo']?.toString(),
         color: colorFromName(teamName),
         played: played,
-        won: won,
-        drawn: drawn,
-        lost: lost,
         gd: gd,
         points: pts,
         zone: zone,
@@ -810,11 +752,7 @@ const List<MatchData> sampleMatches = [
       MatchEvent(minute: "69'", player: 'Bellingham', type: 'goal', isHome: true),
     ],
     highlights: [
-      HighlightClip(
-        title: 'Real Madrid - Liverpool 2-2 | Összefoglaló (Demo)',
-        url: 'https://highlightly.net',
-        source: 'Highlightly Demo',
-      ),
+      HighlightClip(title: 'Real Madrid - Liverpool 2-2 | Összefoglaló (Demo)', url: 'https://highlightly.net'),
     ],
   ),
   MatchData(
@@ -871,21 +809,21 @@ const List<MatchData> sampleMatches = [
   ),
 ];
 
-const Map<String, List<StandingRow>> sampleStandings = {
+const sampleStandings = {
   'Premier League': [
-    StandingRow(pos: 1, team: 'Liverpool', color: Color(0xFFFF1744), played: 12, won: 10, drawn: 1, lost: 1, gd: 17, points: 31, zone: 'ucl'),
-    StandingRow(pos: 2, team: 'Man. City', color: Color(0xFF00B0FF), played: 12, won: 8, drawn: 2, lost: 2, gd: 11, points: 26, zone: 'ucl'),
-    StandingRow(pos: 3, team: 'Arsenal', color: Color(0xFFFF5252), played: 12, won: 7, drawn: 3, lost: 2, gd: 9, points: 24, zone: 'ucl'),
-    StandingRow(pos: 4, team: 'Chelsea', color: Color(0xFF2979FF), played: 12, won: 6, drawn: 4, lost: 2, gd: 8, points: 22, zone: 'ucl'),
+    StandingRow(pos: 1, team: 'Liverpool', color: Color(0xFFFF1744), played: 12, gd: 17, points: 31, zone: 'ucl'),
+    StandingRow(pos: 2, team: 'Man. City', color: Color(0xFF00B0FF), played: 12, gd: 11, points: 26, zone: 'ucl'),
+    StandingRow(pos: 3, team: 'Arsenal', color: Color(0xFFFF5252), played: 12, gd: 9, points: 24, zone: 'ucl'),
+    StandingRow(pos: 4, team: 'Chelsea', color: Color(0xFF2979FF), played: 12, gd: 8, points: 22, zone: 'ucl'),
   ],
   'Bajnokok Ligája': [
-    StandingRow(pos: 1, team: 'Liverpool', color: Color(0xFFFF1744), played: 5, won: 5, drawn: 0, lost: 0, gd: 11, points: 15, zone: 'ucl'),
-    StandingRow(pos: 2, team: 'Barcelona', color: Color(0xFF2979FF), played: 5, won: 4, drawn: 0, lost: 1, gd: 13, points: 12, zone: 'ucl'),
-    StandingRow(pos: 3, team: 'Arsenal', color: Color(0xFFFF5252), played: 5, won: 3, drawn: 1, lost: 1, gd: 6, points: 10, zone: 'ucl'),
+    StandingRow(pos: 1, team: 'Liverpool', color: Color(0xFFFF1744), played: 5, gd: 11, points: 15, zone: 'ucl'),
+    StandingRow(pos: 2, team: 'Barcelona', color: Color(0xFF2979FF), played: 5, gd: 13, points: 12, zone: 'ucl'),
+    StandingRow(pos: 3, team: 'Arsenal', color: Color(0xFFFF5252), played: 5, gd: 6, points: 10, zone: 'ucl'),
   ],
   'La Liga': [
-    StandingRow(pos: 1, team: 'Barcelona', color: Color(0xFF2979FF), played: 13, won: 11, drawn: 0, lost: 2, gd: 28, points: 33, zone: 'ucl'),
-    StandingRow(pos: 2, team: 'Real Madrid', color: Color(0xFF7C4DFF), played: 13, won: 9, drawn: 3, lost: 1, gd: 16, points: 30, zone: 'ucl'),
+    StandingRow(pos: 1, team: 'Barcelona', color: Color(0xFF2979FF), played: 13, gd: 28, points: 33, zone: 'ucl'),
+    StandingRow(pos: 2, team: 'Real Madrid', color: Color(0xFF7C4DFF), played: 13, gd: 16, points: 30, zone: 'ucl'),
   ],
 };
 
@@ -931,10 +869,7 @@ class _MainShellState extends State<MainShell> {
     });
 
     try {
-      final result = await HighlightlyService.fetchMatches(
-        _selectedDate,
-        forceRefresh: forceRefresh,
-      );
+      final result = await HighlightlyService.fetchMatches(_selectedDate, forceRefresh: forceRefresh);
       setState(() {
         _matches = result.data;
         _isLiveApiData = true;
@@ -954,9 +889,7 @@ class _MainShellState extends State<MainShell> {
   }
 
   void _changeDate(int days) {
-    setState(() {
-      _selectedDate = _selectedDate.add(Duration(days: days));
-    });
+    setState(() => _selectedDate = _selectedDate.add(Duration(days: days)));
     _loadMatches(forceRefresh: false);
   }
 
@@ -984,7 +917,7 @@ class _MainShellState extends State<MainShell> {
             children: [
               Icon(Icons.vpn_key, color: Color(0xFF00E676)),
               SizedBox(width: 8),
-              Text('API és Tároló Beállítások', style: TextStyle(fontSize: 18)),
+              Text('API és Tároló', style: TextStyle(fontSize: 18)),
             ],
           ),
           content: SingleChildScrollView(
@@ -992,10 +925,7 @@ class _MainShellState extends State<MainShell> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Highlightly API kulcs (a telefonod elmenti):',
-                  style: TextStyle(fontSize: 12, color: Colors.white70),
-                ),
+                const Text('Highlightly API kulcs:', style: TextStyle(fontSize: 12, color: Colors.white70)),
                 const SizedBox(height: 8),
                 TextField(
                   controller: controller,
@@ -1005,14 +935,11 @@ class _MainShellState extends State<MainShell> {
                     fillColor: const Color(0xFF0B132B),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     suffixIcon: IconButton(
-                      tooltip: 'Beillesztés vágólapról',
                       icon: const Icon(Icons.content_paste, color: Color(0xFF00B0FF)),
                       onPressed: () async {
                         final data = await Clipboard.getData(Clipboard.kTextPlain);
                         if (data?.text != null && data!.text!.trim().isNotEmpty) {
-                          setDialogState(() {
-                            controller.text = data.text!.trim();
-                          });
+                          setDialogState(() => controller.text = data.text!.trim());
                         }
                       },
                     ),
@@ -1023,30 +950,19 @@ class _MainShellState extends State<MainShell> {
                   contentPadding: EdgeInsets.zero,
                   title: const Text('RapidAPI kulcsot használok', style: TextStyle(fontSize: 13)),
                   subtitle: Text(
-                    tempRapid
-                        ? 'football-highlights-api.p.rapidapi.com'
-                        : 'soccer.highlightly.net (közvetlen)',
+                    tempRapid ? 'football-highlights-api.p.rapidapi.com' : 'soccer.highlightly.net',
                     style: const TextStyle(fontSize: 11, color: Colors.white54),
                   ),
                   value: tempRapid,
                   onChanged: (val) => setDialogState(() => tempRapid = val),
                 ),
-                const Divider(color: Colors.white12, height: 20),
-                const Row(
-                  children: [
-                    Icon(Icons.storage, color: Color(0xFF00B0FF), size: 18),
-                    SizedBox(width: 6),
-                    Text(
-                      'Helyi tároló (API keretkímélő)',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                    ),
-                  ],
-                ),
+                const Divider(color: Colors.white12, height: 18),
+                const Text('Helyi tároló (API keretkímélő)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                 const SizedBox(height: 8),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Élő adatok tárolása:', style: TextStyle(fontSize: 12, color: Colors.white70)),
+                    const Text('Élő adatok:', style: TextStyle(fontSize: 12, color: Colors.white70)),
                     Wrap(
                       spacing: 6,
                       children: [2, 5, 15].map((min) {
@@ -1078,20 +994,14 @@ class _MainShellState extends State<MainShell> {
                     children: [
                       Column(
                         children: [
-                          Text(
-                            '${ApiCache.networkRequests}',
-                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.amberAccent, fontSize: 15),
-                          ),
+                          Text('${ApiCache.networkRequests}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.amberAccent, fontSize: 15)),
                           const Text('API kérés', style: TextStyle(fontSize: 10, color: Colors.white60)),
                         ],
                       ),
                       Column(
                         children: [
-                          Text(
-                            '${ApiCache.savedRequests}',
-                            style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00E676), fontSize: 15),
-                          ),
-                          const Text('Megspórolt (tároló)', style: TextStyle(fontSize: 10, color: Colors.white60)),
+                          Text('${ApiCache.savedRequests}', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00E676), fontSize: 15)),
+                          const Text('Megspórolt', style: TextStyle(fontSize: 10, color: Colors.white60)),
                         ],
                       ),
                     ],
@@ -1127,10 +1037,7 @@ class _MainShellState extends State<MainShell> {
                 },
                 child: const Text('Kulcs törlése', style: TextStyle(color: Colors.redAccent)),
               ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Mégse'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Mégse')),
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: const Color(0xFF00E676)),
               onPressed: () async {
@@ -1140,10 +1047,7 @@ class _MainShellState extends State<MainShell> {
                 setState(() => _settingsVersion++);
                 _loadMatches(forceRefresh: false);
               },
-              child: const Text(
-                'Mentés',
-                style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-              ),
+              child: const Text('Mentés', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
             ),
           ],
         ),
@@ -1167,15 +1071,8 @@ class _MainShellState extends State<MainShell> {
         onRefresh: () => _loadMatches(forceRefresh: true),
         onOpenSettings: _openApiSettingsDialog,
       ),
-      StandingsTab(
-        key: ValueKey(_settingsVersion),
-        onOpenSettings: _openApiSettingsDialog,
-      ),
-      FavoritesTab(
-        allMatches: _matches,
-        favoriteIds: _favoriteIds,
-        onToggleFavorite: _toggleFavorite,
-      ),
+      StandingsTab(key: ValueKey(_settingsVersion), onOpenSettings: _openApiSettingsDialog),
+      FavoritesTab(allMatches: _matches, favoriteIds: _favoriteIds, onToggleFavorite: _toggleFavorite),
     ];
 
     return Scaffold(
@@ -1251,17 +1148,10 @@ class _MatchesTabState extends State<MatchesTab> {
 
   @override
   Widget build(BuildContext context) {
-    final dynamicLeagues = <String>{
-      'Összes',
-      ...widget.matches.map((m) => m.league),
-    }.toList();
-
-    if (!dynamicLeagues.contains(selectedLeague)) {
-      selectedLeague = 'Összes';
-    }
+    final dynamicLeagues = <String>{'Összes', ...widget.matches.map((m) => m.league)}.toList();
+    if (!dynamicLeagues.contains(selectedLeague)) selectedLeague = 'Összes';
 
     final liveCount = widget.matches.where((m) => m.isLive).length;
-
     final filteredMatches = widget.matches.where((m) {
       final matchesLeague = selectedLeague == 'Összes' || m.league == selectedLeague;
       final matchesLive = !onlyLive || m.isLive;
@@ -1273,18 +1163,12 @@ class _MatchesTabState extends State<MatchesTab> {
       return matchesLeague && matchesLive && matchesSearch;
     }).toList();
 
-    String sourceSubtitle;
-    Color sourceColor;
-    if (!widget.isLiveApiData) {
-      sourceSubtitle = 'Demo mód';
-      sourceColor = Colors.amberAccent;
-    } else if (widget.loadedFromCache) {
-      sourceSubtitle = 'Tárolóból betöltve • API keret kímélve';
-      sourceColor = const Color(0xFF00B0FF);
-    } else {
-      sourceSubtitle = 'Highlightly Élő API • Frissítve';
-      sourceColor = const Color(0xFF00E676);
-    }
+    final sourceSubtitle = !widget.isLiveApiData
+        ? 'Demo mód'
+        : (widget.loadedFromCache ? 'Tárolóból betöltve • API keret kímélve' : 'Highlightly Élő API • Frissítve');
+    final sourceColor = !widget.isLiveApiData
+        ? Colors.amberAccent
+        : (widget.loadedFromCache ? const Color(0xFF00B0FF) : const Color(0xFF00E676));
 
     return SafeArea(
       child: Column(
@@ -1292,11 +1176,7 @@ class _MatchesTabState extends State<MatchesTab> {
           Container(
             padding: const EdgeInsets.fromLTRB(18, 14, 10, 16),
             decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFF1C2541), Color(0xFF3A506B)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+              gradient: LinearGradient(colors: [Color(0xFF1C2541), Color(0xFF3A506B)]),
               borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
             ),
             child: Column(
@@ -1307,19 +1187,9 @@ class _MatchesTabState extends State<MatchesTab> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'zsoltscores ⚽',
-                            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
-                          ),
+                          const Text('zsoltscores ⚽', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
                           const SizedBox(height: 2),
-                          Text(
-                            sourceSubtitle,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: sourceColor,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                          Text(sourceSubtitle, style: TextStyle(fontSize: 11, color: sourceColor, fontWeight: FontWeight.w600)),
                         ],
                       ),
                     ),
@@ -1328,9 +1198,7 @@ class _MatchesTabState extends State<MatchesTab> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
-                          color: onlyLive
-                              ? const Color(0xFF00E676)
-                              : const Color(0xFF00E676).withAlpha(45),
+                          color: onlyLive ? const Color(0xFF00E676) : const Color(0xFF00E676).withAlpha(45),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(color: const Color(0xFF00E676)),
                         ),
@@ -1349,16 +1217,11 @@ class _MatchesTabState extends State<MatchesTab> {
                         visualDensity: VisualDensity.compact,
                         onPressed: widget.onRefresh,
                         icon: const Icon(Icons.refresh, color: Colors.white70),
-                        tooltip: 'Frissítés az API-ról',
                       ),
                     IconButton(
                       visualDensity: VisualDensity.compact,
                       onPressed: widget.onOpenSettings,
-                      icon: Icon(
-                        Icons.settings,
-                        color: ApiConfig.hasValidKey ? const Color(0xFF00E676) : Colors.amberAccent,
-                      ),
-                      tooltip: 'API és tároló beállítások',
+                      icon: Icon(Icons.settings, color: ApiConfig.hasValidKey ? const Color(0xFF00E676) : Colors.amberAccent),
                     ),
                   ],
                 ),
@@ -1377,10 +1240,7 @@ class _MatchesTabState extends State<MatchesTab> {
                             icon: const Icon(Icons.chevron_left, size: 20),
                             onPressed: () => widget.onChangeDate(-1),
                           ),
-                          Text(
-                            HighlightlyService.formatDate(widget.selectedDate),
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                          ),
+                          Text(HighlightlyService.formatDate(widget.selectedDate), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                           IconButton(
                             visualDensity: VisualDensity.compact,
                             icon: const Icon(Icons.chevron_right, size: 20),
@@ -1400,10 +1260,7 @@ class _MatchesTabState extends State<MatchesTab> {
                           filled: true,
                           fillColor: const Color(0xFF0B132B).withAlpha(180),
                           contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                         ),
                       ),
                     ),
@@ -1412,8 +1269,80 @@ class _MatchesTabState extends State<MatchesTab> {
               ],
             ),
           ),
-
           if (widget.isLoading)
-            const LinearProgressIndicator(
-              color: Color(0xFF00E676),
-              backgroundColor: Colors.transparent,
+            const LinearProgressIndicator(color: Color(0xFF00E676), backgroundColor: Colors.transparent),
+          if (!ApiConfig.hasValidKey)
+            Container(
+              margin: const EdgeInsets.fromLTRB(16, 12, 16, 2),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1C2541),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFF00E676).withAlpha(140)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.vpn_key, color: Color(0xFF00E676), size: 22),
+                  const SizedBox(width: 10),
+                  const Expanded(child: Text('Add meg a Highlightly API kulcsodat az élő meccsekhez!', style: TextStyle(fontSize: 12))),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    style: FilledButton.styleFrom(backgroundColor: const Color(0xFF00E676), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+                    onPressed: widget.onOpenSettings,
+                    child: const Text('Kulcs beírása', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 12)),
+                  ),
+                ],
+              ),
+            ),
+          if (widget.statusMessage != null)
+            GestureDetector(
+              onTap: widget.onOpenSettings,
+              child: Container(
+                width: double.infinity,
+                margin: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withAlpha(35),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.amber.withAlpha(120)),
+                ),
+                child: Text(widget.statusMessage!, style: const TextStyle(fontSize: 12, color: Colors.amberAccent), textAlign: TextAlign.center),
+              ),
+            ),
+          SizedBox(
+            height: 54,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              itemCount: dynamicLeagues.length,
+              itemBuilder: (context, index) {
+                final league = dynamicLeagues[index];
+                final isSelected = selectedLeague == league;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(league),
+                    selected: isSelected,
+                    selectedColor: const Color(0xFF00B0FF),
+                    backgroundColor: const Color(0xFF1C2541),
+                    labelStyle: TextStyle(color: isSelected ? Colors.black : Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                    onSelected: (_) => setState(() => selectedLeague = league),
+                  ),
+                );
+              },
+            ),
+          ),
+          Expanded(
+            child: RefreshIndicator(
+              color: const Color(0xFF00E676),
+              onRefresh: widget.onRefresh,
+              child: filteredMatches.isEmpty
+                  ? ListView(children: const [SizedBox(height: 100), Center(child: Text('Nincs a szűrésnek megfelelő meccs.', style: TextStyle(color: Colors.white60)))])
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: filteredMatches.length,
+                      itemBuilder: (context, index) {
+                        final match = filteredMatches[index];
+                        return MatchCard(
+                          match: match,
+                          isFavorite: widget.favoriteIds.
