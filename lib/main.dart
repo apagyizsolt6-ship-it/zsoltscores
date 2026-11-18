@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'api_service.dart';
@@ -98,6 +99,11 @@ class _MainShellState extends State<MainShell> {
     _loadMatches(forceRefresh: false);
   }
 
+  void _jumpToToday() {
+    setState(() => _selectedDate = DateTime.now());
+    _loadMatches(forceRefresh: false);
+  }
+
   void _toggleFavorite(String id) {
     setState(() {
       if (_favoriteIds.contains(id)) {
@@ -167,7 +173,7 @@ class _MainShellState extends State<MainShell> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Élő adatok:', style: TextStyle(fontSize: 12, color: Colors.white70)),
+                    const Text('Élő lista tárolása:', style: TextStyle(fontSize: 12, color: Colors.white70)),
                     Wrap(
                       spacing: 6,
                       children: [2, 5, 15].map((min) {
@@ -273,6 +279,7 @@ class _MainShellState extends State<MainShell> {
         favoriteIds: _favoriteIds,
         onToggleFavorite: _toggleFavorite,
         onChangeDate: _changeDate,
+        onJumpToday: _jumpToToday,
         onRefresh: () => _loadMatches(forceRefresh: true),
         onOpenSettings: _openApiSettingsDialog,
       ),
@@ -324,6 +331,7 @@ class MatchesTab extends StatefulWidget {
   final Set<String> favoriteIds;
   final ValueChanged<String> onToggleFavorite;
   final ValueChanged<int> onChangeDate;
+  final VoidCallback onJumpToday;
   final Future<void> Function() onRefresh;
   final VoidCallback onOpenSettings;
 
@@ -338,6 +346,7 @@ class MatchesTab extends StatefulWidget {
     required this.favoriteIds,
     required this.onToggleFavorite,
     required this.onChangeDate,
+    required this.onJumpToday,
     required this.onRefresh,
     required this.onOpenSettings,
   });
@@ -368,9 +377,10 @@ class _MatchesTabState extends State<MatchesTab> {
       return matchesLeague && matchesLive && matchesSearch;
     }).toList();
 
+    final countText = '${widget.matches.length} meccs';
     final sourceSubtitle = !widget.isLiveApiData
         ? 'Demo mód'
-        : (widget.loadedFromCache ? 'Tárolóból betöltve • API keret kímélve' : 'Highlightly Élő API • Frissítve');
+        : (widget.loadedFromCache ? 'Tárolóból betöltve • $countText' : 'Highlightly Élő API • $countText');
     final sourceColor = !widget.isLiveApiData
         ? Colors.amberAccent
         : (widget.loadedFromCache ? const Color(0xFF00B0FF) : const Color(0xFF00E676));
@@ -445,7 +455,13 @@ class _MatchesTabState extends State<MatchesTab> {
                             icon: const Icon(Icons.chevron_left, size: 20),
                             onPressed: () => widget.onChangeDate(-1),
                           ),
-                          Text(HighlightlyService.formatDate(widget.selectedDate), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          GestureDetector(
+                            onTap: widget.onJumpToday,
+                            child: Text(
+                              HighlightlyService.formatDate(widget.selectedDate),
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                            ),
+                          ),
                           IconButton(
                             visualDensity: VisualDensity.compact,
                             icon: const Icon(Icons.chevron_right, size: 20),
@@ -459,7 +475,7 @@ class _MatchesTabState extends State<MatchesTab> {
                       child: TextField(
                         onChanged: (val) => setState(() => searchQuery = val),
                         decoration: InputDecoration(
-                          hintText: 'Csapat keresése...',
+                          hintText: 'Csapat vagy liga keresése...',
                           hintStyle: const TextStyle(color: Colors.white54, fontSize: 13),
                           prefixIcon: const Icon(Icons.search, color: Color(0xFF00B0FF), size: 20),
                           filled: true,
@@ -523,10 +539,11 @@ class _MatchesTabState extends State<MatchesTab> {
               itemBuilder: (context, index) {
                 final league = dynamicLeagues[index];
                 final isSelected = selectedLeague == league;
+                final label = league == 'Összes' ? 'Összes (${widget.matches.length})' : league;
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: ChoiceChip(
-                    label: Text(league),
+                    label: Text(label),
                     selected: isSelected,
                     selectedColor: const Color(0xFF00B0FF),
                     backgroundColor: const Color(0xFF1C2541),
@@ -914,12 +931,26 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
   late MatchData _match;
   bool _loadingDetails = false;
   bool _fromCache = false;
+  Timer? _autoTimer;
 
   @override
   void initState() {
     super.initState();
     _match = widget.match;
     _fetchDetails();
+    if (_match.isLive && _match.isFromApi) {
+      _autoTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+        if (mounted && _match.isLive) {
+          _fetchDetails(forceRefresh: true);
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _autoTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _fetchDetails({bool forceRefresh = false}) async {
@@ -946,7 +977,9 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
             children: [
               Text(_match.league, style: const TextStyle(fontSize: 16)),
               if (_fromCache)
-                const Text('Tárolóból betöltve (3 API kérés megspórolva)', style: TextStyle(fontSize: 11, color: Color(0xFF00B0FF))),
+                const Text('Tárolóból betöltve (45 mp védelem)', style: TextStyle(fontSize: 11, color: Color(0xFF00B0FF)))
+              else if (_match.isLive && _match.isFromApi)
+                const Text('Élő követés • 30 mp-enként frissül', style: TextStyle(fontSize: 11, color: Color(0xFF00E676))),
             ],
           ),
           backgroundColor: const Color(0xFF1C2541),
@@ -959,7 +992,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
           children: [
             if (_loadingDetails) const LinearProgressIndicator(color: Color(0xFF00E676), backgroundColor: Colors.transparent),
             Container(
-              margin: const EdgeInsets.all(16),
+              margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 gradient: LinearGradient(colors: [_match.homeColor.withAlpha(75), const Color(0xFF1C2541), _match.awayColor.withAlpha(75)]),
@@ -979,6 +1012,22 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                 ],
               ),
             ),
+            if (_match.detailNote != null)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00B0FF).withAlpha(30),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFF00B0FF).withAlpha(100)),
+                ),
+                child: Text(
+                  _match.detailNote!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 11, color: Colors.white70),
+                ),
+              ),
             const TabBar(
               indicatorColor: Color(0xFF00E676),
               labelColor: Color(0xFF00E676),
