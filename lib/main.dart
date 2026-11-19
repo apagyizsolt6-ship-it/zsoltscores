@@ -8,8 +8,74 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await ApiConfig.load();
   await ApiCache.loadStats();
+  await DisplayPrefs.load();
   await LogoCache.init();
   runApp(const ZsoltScoresApp());
+}
+
+// --- ÉRTESÍTÉSKEZELŐ (KEDVENC MECCSEK: GÓL, PIROS LAP, VÉGE) ---
+class LiveAlertService {
+  static final Map<String, String> _knownSnapshots = {};
+  static bool _seeded = false;
+
+  static void evaluateMatches(BuildContext context, List<MatchData> matches, Set<String> favoriteIds) {
+    if (matches.isEmpty) return;
+
+    if (!_seeded) {
+      for (final m in matches) {
+        _knownSnapshots[m.id] = _signature(m);
+      }
+      _seeded = true;
+      return;
+    }
+
+    final alerts = <String>[];
+    for (final m in matches) {
+      final prev = _knownSnapshots[m.id];
+      final curr = _signature(m);
+      _knownSnapshots[m.id] = curr;
+
+      if (prev == null || prev == curr) continue;
+      if (!favoriteIds.contains(m.id)) continue;
+
+      final prevParts = prev.split('|');
+      final prevH = int.tryParse(prevParts[0]) ?? 0;
+      final prevA = int.tryParse(prevParts[1]) ?? 0;
+      final prevRed = int.tryParse(prevParts[2]) ?? 0;
+      final prevFin = prevParts[3] == '1';
+
+      final currRed = m.events.where((e) => e.type == 'red').length;
+
+      if (m.homeScore > prevH || m.awayScore > prevA) {
+        alerts.add('⚽ GÓL! ${m.homeTeam} ${m.homeScore} - ${m.awayScore} ${m.awayTeam} (${m.status})');
+      }
+      if (currRed > prevRed) {
+        alerts.add('🟥 Piros lap: ${m.homeTeam} - ${m.awayTeam} (${m.status})');
+      }
+      if (m.isFinished && !prevFin) {
+        alerts.add('🏁 VÉGE: ${m.homeTeam} ${m.homeScore} - ${m.awayScore} ${m.awayTeam}');
+      }
+    }
+
+    if (alerts.isNotEmpty && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: const Color(0xFF1C2541),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 5),
+          content: Text(
+            alerts.join('\n'),
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12.5),
+          ),
+        ),
+      );
+    }
+  }
+
+  static String _signature(MatchData m) {
+    final reds = m.events.where((e) => e.type == 'red').length;
+    return '${m.homeScore}|${m.awayScore}|$reds|${m.isFinished ? 1 : 0}';
+  }
 }
 
 class ZsoltScoresApp extends StatelessWidget {
@@ -38,50 +104,12 @@ class ZsoltScoresApp extends StatelessWidget {
 // --- MAGYAR ABC-SORRENDEZŐ SEGÉDFÜGGVÉNY ---
 int compareHungarianStrings(String a, String b) {
   const order = {
-    'a': 1,
-    'á': 2,
-    'b': 3,
-    'c': 4,
-    'cs': 5,
-    'd': 6,
-    'dz': 7,
-    'dzs': 8,
-    'e': 9,
-    'é': 10,
-    'f': 11,
-    'g': 12,
-    'gy': 13,
-    'h': 14,
-    'i': 15,
-    'í': 16,
-    'j': 17,
-    'k': 18,
-    'l': 19,
-    'ly': 20,
-    'm': 21,
-    'n': 22,
-    'ny': 23,
-    'o': 24,
-    'ó': 25,
-    'ö': 26,
-    'ő': 27,
-    'p': 28,
-    'q': 29,
-    'r': 30,
-    's': 31,
-    'sz': 32,
-    't': 33,
-    'ty': 34,
-    'u': 35,
-    'ú': 36,
-    'ü': 37,
-    'ű': 38,
-    'v': 39,
-    'w': 40,
-    'x': 41,
-    'y': 42,
-    'z': 43,
-    'zs': 44,
+    'a': 1, 'á': 2, 'b': 3, 'c': 4, 'cs': 5, 'd': 6, 'dz': 7, 'dzs': 8,
+    'e': 9, 'é': 10, 'f': 11, 'g': 12, 'gy': 13, 'h': 14, 'i': 15, 'í': 16,
+    'j': 17, 'k': 18, 'l': 19, 'ly': 20, 'm': 21, 'n': 22, 'ny': 23, 'o': 24,
+    'ó': 25, 'ö': 26, 'ő': 27, 'p': 28, 'q': 29, 'r': 30, 's': 31, 'sz': 32,
+    't': 33, 'ty': 34, 'u': 35, 'ú': 36, 'ü': 37, 'ű': 38, 'v': 39, 'w': 40,
+    'x': 41, 'y': 42, 'z': 43, 'zs': 44,
   };
 
   List<int> tokenize(String s) {
@@ -123,6 +151,71 @@ int compareHungarianStrings(String a, String b) {
     if (ta[i] != tb[i]) return ta[i].compareTo(tb[i]);
   }
   return ta.length.compareTo(tb.length);
+}
+
+// --- ORSZÁGZÁSZLÓ WIDGET ---
+class CountryFlagBadge extends StatefulWidget {
+  final String countryName;
+  final String? flagUrl;
+
+  const CountryFlagBadge({
+    super.key,
+    required this.countryName,
+    this.flagUrl,
+  });
+
+  @override
+  State<CountryFlagBadge> createState() => _CountryFlagBadgeState();
+}
+
+class _CountryFlagBadgeState extends State<CountryFlagBadge> {
+  File? _localFile;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFlag();
+  }
+
+  @override
+  void didUpdateWidget(covariant CountryFlagBadge oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.flagUrl != widget.flagUrl) {
+      _localFile = null;
+      _loadFlag();
+    }
+  }
+
+  Future<void> _loadFlag() async {
+    if (widget.flagUrl == null || widget.flagUrl!.trim().isEmpty) return;
+    final file = await LogoCache.getOrDownload(widget.flagUrl);
+    if (mounted && file != null) {
+      setState(() => _localFile = file);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_localFile != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(3),
+        child: Image.file(
+          _localFile!,
+          width: 18,
+          height: 13,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Text(
+            HungarianLocalization.flagEmojiForCountry(widget.countryName),
+            style: const TextStyle(fontSize: 13),
+          ),
+        ),
+      );
+    }
+    return Text(
+      HungarianLocalization.flagEmojiForCountry(widget.countryName),
+      style: const TextStyle(fontSize: 13),
+    );
+  }
 }
 
 // --- HELYI GYORSÍTÓTÁRAZOTT CSAPATLOGÓ WIDGET ---
@@ -213,19 +306,44 @@ class _MainShellState extends State<MainShell> {
   int _settingsVersion = 0;
   final Set<String> _favoriteIds = {'m1', 'm2'};
   List<MatchData> _matches = sampleMatches;
+  Map<String, int> _prevScores = {};
+  Set<String> _recentlyScoredIds = {};
   DateTime _selectedDate = DateTime.now();
   bool _isLoading = false;
   bool _isLiveApiData = false;
   bool _loadedFromCache = false;
   String? _statusMessage;
+  Timer? _listLiveTimer;
 
   @override
   void initState() {
     super.initState();
+    for (final m in _matches) {
+      _prevScores[m.id] = m.homeScore * 100 + m.awayScore;
+    }
     _loadMatches();
+    _restartLiveListTimer();
   }
 
-  Future<void> _loadMatches({bool forceRefresh = false}) async {
+  @override
+  void dispose() {
+    _listLiveTimer?.cancel();
+    super.dispose();
+  }
+
+  void _restartLiveListTimer() {
+    _listLiveTimer?.cancel();
+    if (!DisplayPrefs.autoLiveListRefresh) return;
+    _listLiveTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      final isToday = SportsApiService.formatDate(_selectedDate) == SportsApiService.formatDate(DateTime.now());
+      final hasLive = _matches.any((m) => m.isLive);
+      if (mounted && ApiConfig.hasValidKey && isToday && hasLive) {
+        _loadMatches(forceRefresh: true, silent: true);
+      }
+    });
+  }
+
+  Future<void> _loadMatches({bool forceRefresh = false, bool silent = false}) async {
     if (!ApiConfig.hasValidKey) {
       setState(() {
         _matches = sampleMatches;
@@ -236,30 +354,61 @@ class _MainShellState extends State<MainShell> {
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-      _statusMessage = null;
-    });
+    if (!silent) {
+      setState(() {
+        _isLoading = true;
+        _statusMessage = null;
+      });
+    }
 
     try {
       final result = await SportsApiService.fetchMatches(_selectedDate, forceRefresh: forceRefresh);
+      final scoredNow = <String>{};
+      final nextScores = <String, int>{};
+
+      for (final m in result.data) {
+        final code = m.homeScore * 100 + m.awayScore;
+        nextScores[m.id] = code;
+        if (_prevScores.containsKey(m.id) && _prevScores[m.id] != code) {
+          scoredNow.add(m.id);
+        }
+      }
+      _prevScores = nextScores;
+
       setState(() {
         _matches = result.data;
         _isLiveApiData = true;
         _loadedFromCache = result.fromCache;
         _isLoading = false;
+        if (scoredNow.isNotEmpty) {
+          _recentlyScoredIds.addAll(scoredNow);
+        }
         _statusMessage = result.data.isEmpty
             ? 'Erre a napra nincs elérhető meccs (${ApiConfig.providerName}).'
             : null;
       });
+
+      if (scoredNow.isNotEmpty) {
+        Future.delayed(const Duration(seconds: 4), () {
+          if (mounted) {
+            setState(() => _recentlyScoredIds.removeAll(scoredNow));
+          }
+        });
+      }
+
+      if (mounted) {
+        LiveAlertService.evaluateMatches(context, result.data, _favoriteIds);
+      }
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _isLiveApiData = false;
-        _loadedFromCache = false;
-        _matches = sampleMatches;
-        _statusMessage = '$e – koppints a ⚙️ ikonra a beállításokhoz';
-      });
+      if (!silent) {
+        setState(() {
+          _isLoading = false;
+          _isLiveApiData = false;
+          _loadedFromCache = false;
+          _matches = sampleMatches;
+          _statusMessage = '$e – koppints a ⚙️ ikonra a beállításokhoz';
+        });
+      }
     }
   }
 
@@ -283,6 +432,13 @@ class _MainShellState extends State<MainShell> {
     });
   }
 
+  Future<void> _togglePinCompetition(String compKey) async {
+    await DisplayPrefs.togglePin(compKey);
+    if (mounted) {
+      setState(() => _settingsVersion++);
+    }
+  }
+
   void _openApiSettingsDialog() async {
     await LogoCache.refreshCount();
     if (!mounted) return;
@@ -292,6 +448,8 @@ class _MainShellState extends State<MainShell> {
     final spController = TextEditingController(text: ApiConfig.statpalKey);
     bool tempRapid = ApiConfig.useRapidApi;
     int tempTtl = ApiCache.cacheMinutes;
+    CollapseMode tempCollapseMode = DisplayPrefs.collapseMode;
+    bool tempAutoLiveList = DisplayPrefs.autoLiveListRefresh;
     String? usageInfo;
     bool checkingUsage = false;
 
@@ -308,7 +466,7 @@ class _MainShellState extends State<MainShell> {
               children: [
                 Icon(Icons.vpn_key, color: Color(0xFF00E676)),
                 SizedBox(width: 8),
-                Text('API és Gyorsítótár', style: TextStyle(fontSize: 18)),
+                Text('Beállítások és Gyorsítótár', style: TextStyle(fontSize: 17)),
               ],
             ),
             content: SingleChildScrollView(
@@ -433,6 +591,58 @@ class _MainShellState extends State<MainShell> {
                       ),
                     ),
                   ],
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Élő követés (60 mp-es listafrissítés)', style: TextStyle(fontSize: 13)),
+                    subtitle: const Text(
+                      'Gól esetén zöld jelzés + kedvenc meccs riasztás',
+                      style: TextStyle(fontSize: 11, color: Colors.white54),
+                    ),
+                    value: tempAutoLiveList,
+                    onChanged: (val) => setDialogState(() => tempAutoLiveList = val),
+                  ),
+                  const Divider(color: Colors.white12, height: 14),
+                  const Text('Bajnokságok kezdőállapota:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Élő / Kitűzött nyitva', style: TextStyle(fontSize: 11)),
+                        selected: tempCollapseMode == CollapseMode.liveOrPinned,
+                        selectedColor: const Color(0xFF00E676),
+                        backgroundColor: const Color(0xFF0B132B),
+                        labelStyle: TextStyle(
+                          color: tempCollapseMode == CollapseMode.liveOrPinned ? Colors.black : Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        onSelected: (_) => setDialogState(() => tempCollapseMode = CollapseMode.liveOrPinned),
+                      ),
+                      ChoiceChip(
+                        label: const Text('Mind nyitva', style: TextStyle(fontSize: 11)),
+                        selected: tempCollapseMode == CollapseMode.allExpanded,
+                        selectedColor: const Color(0xFF00B0FF),
+                        backgroundColor: const Color(0xFF0B132B),
+                        labelStyle: TextStyle(
+                          color: tempCollapseMode == CollapseMode.allExpanded ? Colors.black : Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        onSelected: (_) => setDialogState(() => tempCollapseMode = CollapseMode.allExpanded),
+                      ),
+                      ChoiceChip(
+                        label: const Text('Mind csukva', style: TextStyle(fontSize: 11)),
+                        selected: tempCollapseMode == CollapseMode.allCollapsed,
+                        selectedColor: Colors.amberAccent,
+                        backgroundColor: const Color(0xFF0B132B),
+                        labelStyle: TextStyle(
+                          color: tempCollapseMode == CollapseMode.allCollapsed ? Colors.black : Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        onSelected: (_) => setDialogState(() => tempCollapseMode = CollapseMode.allCollapsed),
+                      ),
+                    ],
+                  ),
                   const Divider(color: Colors.white12, height: 18),
                   const Text('Helyi tároló (API- és logókímélő)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                   const SizedBox(height: 8),
@@ -522,6 +732,9 @@ class _MainShellState extends State<MainShell> {
                       rapid: tempRapid,
                       newStatpalKey: spController.text,
                     );
+                    await DisplayPrefs.setCollapseMode(tempCollapseMode);
+                    await DisplayPrefs.setAutoLiveListRefresh(tempAutoLiveList);
+                    _restartLiveListTimer();
                     if (ctx.mounted) Navigator.pop(ctx);
                     setState(() => _settingsVersion++);
                     _loadMatches(forceRefresh: true);
@@ -539,6 +752,9 @@ class _MainShellState extends State<MainShell> {
                     newStatpalKey: spController.text,
                   );
                   await ApiCache.setCacheMinutes(tempTtl);
+                  await DisplayPrefs.setCollapseMode(tempCollapseMode);
+                  await DisplayPrefs.setAutoLiveListRefresh(tempAutoLiveList);
+                  _restartLiveListTimer();
                   if (ctx.mounted) Navigator.pop(ctx);
                   setState(() => _settingsVersion++);
                   _loadMatches(forceRefresh: false);
@@ -556,7 +772,9 @@ class _MainShellState extends State<MainShell> {
   Widget build(BuildContext context) {
     final pages = [
       MatchesTab(
+        key: ValueKey('matches_$_settingsVersion'),
         matches: _matches,
+        recentlyScoredIds: _recentlyScoredIds,
         selectedDate: _selectedDate,
         isLoading: _isLoading,
         isLiveApiData: _isLiveApiData,
@@ -564,13 +782,19 @@ class _MainShellState extends State<MainShell> {
         statusMessage: _statusMessage,
         favoriteIds: _favoriteIds,
         onToggleFavorite: _toggleFavorite,
+        onTogglePinCompetition: _togglePinCompetition,
         onChangeDate: _changeDate,
         onJumpToday: _jumpToToday,
         onRefresh: () => _loadMatches(forceRefresh: true),
         onOpenSettings: _openApiSettingsDialog,
       ),
-      StandingsTab(key: ValueKey(_settingsVersion), onOpenSettings: _openApiSettingsDialog),
-      FavoritesTab(allMatches: _matches, favoriteIds: _favoriteIds, onToggleFavorite: _toggleFavorite),
+      StandingsTab(key: ValueKey('standings_$_settingsVersion'), onOpenSettings: _openApiSettingsDialog),
+      FavoritesTab(
+        allMatches: _matches,
+        recentlyScoredIds: _recentlyScoredIds,
+        favoriteIds: _favoriteIds,
+        onToggleFavorite: _toggleFavorite,
+      ),
     ];
 
     return Scaffold(
@@ -606,9 +830,10 @@ class _MainShellState extends State<MainShell> {
   }
 }
 
-// --- 1. MECCSEK FÜL (ORSZÁG ALAPÚ ABC-SORREND + ÖSSZES NYITÁSA/CSUKÁSA) ---
+// --- 1. MECCSEK FÜL ---
 class MatchesTab extends StatefulWidget {
   final List<MatchData> matches;
+  final Set<String> recentlyScoredIds;
   final DateTime selectedDate;
   final bool isLoading;
   final bool isLiveApiData;
@@ -616,6 +841,7 @@ class MatchesTab extends StatefulWidget {
   final String? statusMessage;
   final Set<String> favoriteIds;
   final ValueChanged<String> onToggleFavorite;
+  final ValueChanged<String> onTogglePinCompetition;
   final ValueChanged<int> onChangeDate;
   final VoidCallback onJumpToday;
   final Future<void> Function() onRefresh;
@@ -624,6 +850,7 @@ class MatchesTab extends StatefulWidget {
   const MatchesTab({
     super.key,
     required this.matches,
+    required this.recentlyScoredIds,
     required this.selectedDate,
     required this.isLoading,
     required this.isLiveApiData,
@@ -631,6 +858,7 @@ class MatchesTab extends StatefulWidget {
     required this.statusMessage,
     required this.favoriteIds,
     required this.onToggleFavorite,
+    required this.onTogglePinCompetition,
     required this.onChangeDate,
     required this.onJumpToday,
     required this.onRefresh,
@@ -645,7 +873,7 @@ class _MatchesTabState extends State<MatchesTab> {
   String selectedCompetition = 'Összes';
   bool onlyLive = false;
   String searchQuery = '';
-  final Set<String> _collapsedCompetitions = {};
+  final Set<String> _manualOverrides = {};
 
   String _formatHungarianDayLabel(DateTime dt) {
     final now = DateTime.now();
@@ -665,16 +893,60 @@ class _MatchesTabState extends State<MatchesTab> {
     return base;
   }
 
-  void _toggleAllCompetitions(List<String> visibleCompetitions) {
-    if (visibleCompetitions.isEmpty) return;
-    final allCollapsed = visibleCompetitions.every((c) => _collapsedCompetitions.contains(c));
+  bool _defaultCollapsedFor(String compKey, List<MatchData> compMatches) {
+    switch (DisplayPrefs.collapseMode) {
+      case CollapseMode.allExpanded:
+        return false;
+      case CollapseMode.allCollapsed:
+        return true;
+      case CollapseMode.liveOrPinned:
+        final isPinned = DisplayPrefs.pinnedCompetitions.contains(compKey);
+        final hasLive = compMatches.any((m) => m.isLive);
+        return !(isPinned || hasLive);
+    }
+  }
+
+  bool _isCompetitionCollapsed(String compKey, List<MatchData> compMatches) {
+    final def = _defaultCollapsedFor(compKey, compMatches);
+    return _manualOverrides.contains(compKey) ? !def : def;
+  }
+
+  void _toggleSingleCompetition(String compKey) {
     setState(() {
-      if (allCollapsed) {
-        _collapsedCompetitions.removeAll(visibleCompetitions);
+      if (_manualOverrides.contains(compKey)) {
+        _manualOverrides.remove(compKey);
       } else {
-        _collapsedCompetitions.addAll(visibleCompetitions);
+        _manualOverrides.add(compKey);
       }
     });
+  }
+
+  void _toggleAllCompetitions(Map<String, List<MatchData>> grouped, List<String> visibleCompetitions) {
+    if (visibleCompetitions.isEmpty) return;
+    final allCollapsed =
+        visibleCompetitions.every((c) => _isCompetitionCollapsed(c, grouped[c]!));
+    setState(() {
+      _manualOverrides.clear();
+      for (final c in visibleCompetitions) {
+        final def = _defaultCollapsedFor(c, grouped[c]!);
+        final targetCollapsed = !allCollapsed;
+        if (def != targetCollapsed) {
+          _manualOverrides.add(c);
+        }
+      }
+    });
+  }
+
+  int _compareCompetitions(MatchData ma, MatchData mb) {
+    final ka = ma.fullCompetitionLabel;
+    final kb = mb.fullCompetitionLabel;
+    final pinA = DisplayPrefs.pinnedCompetitions.contains(ka);
+    final pinB = DisplayPrefs.pinnedCompetitions.contains(kb);
+    if (pinA != pinB) return pinA ? -1 : 1;
+
+    final countryCmp = compareHungarianStrings(ma.country, mb.country);
+    if (countryCmp != 0) return countryCmp;
+    return compareHungarianStrings(ma.league, mb.league);
   }
 
   @override
@@ -698,17 +970,9 @@ class _MatchesTabState extends State<MatchesTab> {
       groupedByCompetition.putIfAbsent(m.fullCompetitionLabel, () => []).add(m);
     }
 
-    // ABC-sorrend ORSZÁG NÉV alapján (majd bajnokság név alapján)
     final competitionKeys = groupedByCompetition.keys.toList()
-      ..sort((a, b) {
-        final ma = groupedByCompetition[a]!.first;
-        final mb = groupedByCompetition[b]!.first;
-        final countryCmp = compareHungarianStrings(ma.country, mb.country);
-        if (countryCmp != 0) return countryCmp;
-        return compareHungarianStrings(ma.league, mb.league);
-      });
+      ..sort((a, b) => _compareCompetitions(groupedByCompetition[a]!.first, groupedByCompetition[b]!.first));
 
-    // A felső szűrőcsíkot is ország név szerinti ABC-sorrendben rendezzük
     final allCompSet = <String>{};
     final compSampleMap = <String, MatchData>{};
     for (final m in widget.matches) {
@@ -716,27 +980,22 @@ class _MatchesTabState extends State<MatchesTab> {
       compSampleMap.putIfAbsent(m.fullCompetitionLabel, () => m);
     }
     final sortedChipComps = allCompSet.toList()
-      ..sort((a, b) {
-        final ma = compSampleMap[a]!;
-        final mb = compSampleMap[b]!;
-        final countryCmp = compareHungarianStrings(ma.country, mb.country);
-        if (countryCmp != 0) return countryCmp;
-        return compareHungarianStrings(ma.league, mb.league);
-      });
+      ..sort((a, b) => _compareCompetitions(compSampleMap[a]!, compSampleMap[b]!));
 
     final dynamicCompetitions = ['Összes', ...sortedChipComps];
     if (!dynamicCompetitions.contains(selectedCompetition)) selectedCompetition = 'Összes';
 
-    final areAllCollapsed =
-        competitionKeys.isNotEmpty && competitionKeys.every((c) => _collapsedCompetitions.contains(c));
+    final areAllCollapsed = competitionKeys.isNotEmpty &&
+        competitionKeys.every((c) => _isCompetitionCollapsed(c, groupedByCompetition[c]!));
 
     final countText = '${widget.matches.length} meccs';
     final provName = ApiConfig.providerName;
+    final liveAutoTag = DisplayPrefs.autoLiveListRefresh ? ' • 60mp' : '';
     final sourceSubtitle = !widget.isLiveApiData
         ? 'Minta mód ($provName)'
         : (widget.loadedFromCache
             ? 'Gyorsítótárból ($provName) • $countText'
-            : '$provName Élő • $countText');
+            : '$provName Élő$liveAutoTag • $countText');
     final sourceColor = !widget.isLiveApiData
         ? Colors.amberAccent
         : (widget.loadedFromCache ? const Color(0xFF00B0FF) : const Color(0xFF00E676));
@@ -744,7 +1003,6 @@ class _MatchesTabState extends State<MatchesTab> {
     return SafeArea(
       child: Column(
         children: [
-          // Színes felső fejléc
           Container(
             padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
             decoration: const BoxDecoration(
@@ -787,12 +1045,50 @@ class _MatchesTabState extends State<MatchesTab> {
                         ],
                       ),
                     ),
-                    // Összes bajnokság egy gombos nyitása / csukása
+                    Tooltip(
+                      message: DisplayPrefs.autoLiveListRefresh ? 'Élő követés aktív (60 mp)' : 'Élő követés kikapcsolva',
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () async {
+                          await DisplayPrefs.setAutoLiveListRefresh(!DisplayPrefs.autoLiveListRefresh);
+                          setState(() {});
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  DisplayPrefs.autoLiveListRefresh
+                                      ? 'Élő követés (60 mp) bekapcsolva!'
+                                      : 'Élő követés kikapcsolva.',
+                                ),
+                              ),
+                            );
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(7),
+                          margin: const EdgeInsets.only(right: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0B132B).withAlpha(180),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: DisplayPrefs.autoLiveListRefresh
+                                  ? const Color(0xFF00E676).withAlpha(130)
+                                  : Colors.white24,
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.sensors,
+                            color: DisplayPrefs.autoLiveListRefresh ? const Color(0xFF00E676) : Colors.white38,
+                            size: 18,
+                          ),
+                        ),
+                      ),
+                    ),
                     Tooltip(
                       message: areAllCollapsed ? 'Összes bajnokság kinyitása' : 'Összes bajnokság összecsukása',
                       child: InkWell(
                         borderRadius: BorderRadius.circular(12),
-                        onTap: () => _toggleAllCompetitions(competitionKeys),
+                        onTap: () => _toggleAllCompetitions(groupedByCompetition, competitionKeys),
                         child: Container(
                           padding: const EdgeInsets.all(7),
                           margin: const EdgeInsets.only(right: 4),
@@ -992,7 +1288,7 @@ class _MatchesTabState extends State<MatchesTab> {
               ),
             ),
 
-          // Gyors bajnokság-választó sáv (ország alapú ABC-sorrendben)
+          // Gyors bajnokság-választó sáv
           SizedBox(
             height: 46,
             child: ListView.builder(
@@ -1002,10 +1298,13 @@ class _MatchesTabState extends State<MatchesTab> {
               itemBuilder: (context, index) {
                 final comp = dynamicCompetitions[index];
                 final isSelected = selectedCompetition == comp;
-                final label = comp == 'Összes' ? 'Összes (${widget.matches.length})' : comp;
+                final isPinned = DisplayPrefs.pinnedCompetitions.contains(comp);
+                final label = comp == 'Összes'
+                    ? 'Összes (${widget.matches.length})'
+                    : (isPinned ? '📌 $comp' : comp);
                 final accent = comp == 'Összes'
                     ? const Color(0xFF00E676)
-                    : SportsApiService.colorFromName(comp);
+                    : (isPinned ? const Color(0xFFFFAB00) : SportsApiService.colorFromName(comp));
 
                 return Padding(
                   padding: const EdgeInsets.only(right: 7),
@@ -1022,7 +1321,7 @@ class _MatchesTabState extends State<MatchesTab> {
                         color: isSelected ? null : const Color(0xFF1C2541),
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
-                          color: isSelected ? accent : Colors.white12,
+                          color: isSelected ? accent : (isPinned ? const Color(0xFFFFAB00).withAlpha(110) : Colors.white12),
                         ),
                       ),
                       child: Text(
@@ -1040,7 +1339,7 @@ class _MatchesTabState extends State<MatchesTab> {
             ),
           ),
 
-          // Eredmények.com stílusú meccslista, ORSZÁG + BAJNOKSÁG fejléccel, ABC-sorrendben
+          // Meccslista
           Expanded(
             child: RefreshIndicator(
               color: const Color(0xFF00E676),
@@ -1061,15 +1360,18 @@ class _MatchesTabState extends State<MatchesTab> {
                         final firstMatch = compMatches.first;
                         final countryName = firstMatch.country.toUpperCase();
                         final leagueName = firstMatch.league.toUpperCase();
-                        final isCollapsed = _collapsedCompetitions.contains(compKey);
-                        final accent = SportsApiService.colorFromName(compKey);
+                        final isPinned = DisplayPrefs.pinnedCompetitions.contains(compKey);
+                        final isCollapsed = _isCompetitionCollapsed(compKey, compMatches);
+                        final accent = isPinned
+                            ? const Color(0xFFFFAB00)
+                            : SportsApiService.colorFromName(compKey);
 
                         return Container(
                           margin: const EdgeInsets.only(bottom: 12),
                           decoration: BoxDecoration(
                             color: const Color(0xFF131D3B),
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: accent.withAlpha(85)),
+                            border: Border.all(color: accent.withAlpha(isPinned ? 140 : 85)),
                             boxShadow: [
                               BoxShadow(
                                 color: accent.withAlpha(18),
@@ -1085,21 +1387,13 @@ class _MatchesTabState extends State<MatchesTab> {
                                   top: const Radius.circular(14),
                                   bottom: Radius.circular(isCollapsed ? 14 : 0),
                                 ),
-                                onTap: () {
-                                  setState(() {
-                                    if (isCollapsed) {
-                                      _collapsedCompetitions.remove(compKey);
-                                    } else {
-                                      _collapsedCompetitions.add(compKey);
-                                    }
-                                  });
-                                },
+                                onTap: () => _toggleSingleCompetition(compKey),
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                                   decoration: BoxDecoration(
                                     gradient: LinearGradient(
                                       colors: [
-                                        accent.withAlpha(72),
+                                        accent.withAlpha(78),
                                         const Color(0xFF1C2541),
                                         accent.withAlpha(26),
                                       ],
@@ -1119,19 +1413,22 @@ class _MatchesTabState extends State<MatchesTab> {
                                           borderRadius: BorderRadius.circular(4),
                                         ),
                                       ),
-                                      const SizedBox(width: 8),
+                                      const SizedBox(width: 7),
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                                         decoration: BoxDecoration(
-                                          color: const Color(0xFF0B132B).withAlpha(210),
+                                          color: const Color(0xFF0B132B).withAlpha(215),
                                           borderRadius: BorderRadius.circular(6),
                                           border: Border.all(color: accent.withAlpha(130)),
                                         ),
                                         child: Row(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
-                                            Icon(Icons.public, size: 12, color: accent),
-                                            const SizedBox(width: 4),
+                                            CountryFlagBadge(
+                                              countryName: firstMatch.country,
+                                              flagUrl: firstMatch.countryFlagUrl,
+                                            ),
+                                            const SizedBox(width: 5),
                                             Text(
                                               countryName,
                                               style: TextStyle(
@@ -1157,6 +1454,17 @@ class _MatchesTabState extends State<MatchesTab> {
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
+                                      GestureDetector(
+                                        onTap: () => widget.onTogglePinCompetition(compKey),
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                          child: Icon(
+                                            isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+                                            size: 16,
+                                            color: isPinned ? const Color(0xFFFFAB00) : Colors.white38,
+                                          ),
+                                        ),
+                                      ),
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                                         decoration: BoxDecoration(
@@ -1168,7 +1476,7 @@ class _MatchesTabState extends State<MatchesTab> {
                                           style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: accent),
                                         ),
                                       ),
-                                      const SizedBox(width: 4),
+                                      const SizedBox(width: 3),
                                       Icon(
                                         isCollapsed ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_up,
                                         size: 18,
@@ -1188,6 +1496,7 @@ class _MatchesTabState extends State<MatchesTab> {
                                       MatchCard(
                                         match: match,
                                         isFavorite: widget.favoriteIds.contains(match.id),
+                                        isGoalFlash: widget.recentlyScoredIds.contains(match.id),
                                         onToggleFavorite: () => widget.onToggleFavorite(match.id),
                                       ),
                                       if (!isLast)
@@ -1212,16 +1521,18 @@ class _MatchesTabState extends State<MatchesTab> {
   }
 }
 
-// --- EREDMÉNYEK.COM STÍLUSÚ, SZÍNES MECCSSOR ---
+// --- MECCSKÁRTYA (GÓLVILLANÁS + KOMPAKT GÓLLÖVŐK ÉS PIROS LAPOK) ---
 class MatchCard extends StatelessWidget {
   final MatchData match;
   final bool isFavorite;
+  final bool isGoalFlash;
   final VoidCallback onToggleFavorite;
 
   const MatchCard({
     super.key,
     required this.match,
     required this.isFavorite,
+    this.isGoalFlash = false,
     required this.onToggleFavorite,
   });
 
@@ -1231,170 +1542,206 @@ class MatchCard extends StatelessWidget {
     final awayWinning = match.isLive || match.isFinished ? match.awayScore > match.homeScore : false;
     final showScore = match.isLive || match.isFinished;
 
+    final keyEvents = match.events.where((e) => e.type == 'goal' || e.type == 'red').toList();
+
     return InkWell(
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MatchStatsScreen(match: match))),
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 450),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
         decoration: BoxDecoration(
-          gradient: match.isLive
-              ? LinearGradient(
-                  colors: [
-                    const Color(0xFF00E676).withAlpha(24),
-                    match.homeColor.withAlpha(16),
-                    const Color(0xFF00B0FF).withAlpha(20),
-                  ],
-                )
-              : LinearGradient(
-                  colors: [
-                    match.homeColor.withAlpha(14),
-                    Colors.transparent,
-                    match.awayColor.withAlpha(14),
-                  ],
-                ),
+          color: isGoalFlash ? const Color(0xFF00E676).withAlpha(65) : null,
+          gradient: isGoalFlash
+              ? null
+              : (match.isLive
+                  ? LinearGradient(
+                      colors: [
+                        const Color(0xFF00E676).withAlpha(24),
+                        match.homeColor.withAlpha(16),
+                        const Color(0xFF00B0FF).withAlpha(20),
+                      ],
+                    )
+                  : LinearGradient(
+                      colors: [
+                        match.homeColor.withAlpha(14),
+                        Colors.transparent,
+                        match.awayColor.withAlpha(14),
+                      ],
+                    )),
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              width: 48,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (match.isLive) ...[
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [Color(0xFFFF1744), Color(0xFFFF5252)]),
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                      child: const Text(
-                        'ÉLŐ',
-                        style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      match.status,
-                      style: const TextStyle(color: Color(0xFF00E676), fontSize: 11, fontWeight: FontWeight.w900),
-                      textAlign: TextAlign.center,
-                    ),
-                  ] else if (match.isFinished) ...[
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF00B0FF).withAlpha(32),
-                        borderRadius: BorderRadius.circular(5),
-                        border: Border.all(color: const Color(0xFF00B0FF).withAlpha(90)),
-                      ),
-                      child: Text(
-                        match.status,
-                        style: const TextStyle(color: Color(0xFF80D8FF), fontSize: 10, fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                  ] else ...[
-                    Text(
-                      match.status,
-                      style: const TextStyle(color: Colors.white70, fontSize: 11.5, fontWeight: FontWeight.w700),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            Container(
-              width: 2.5,
-              height: 40,
-              margin: const EdgeInsets.symmetric(horizontal: 8),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(2),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [match.homeColor, match.awayColor],
+            Row(
+              children: [
+                SizedBox(
+                  width: 48,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (match.isLive) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(colors: [Color(0xFFFF1744), Color(0xFFFF5252)]),
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                          child: const Text(
+                            'ÉLŐ',
+                            style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          match.status,
+                          style: const TextStyle(color: Color(0xFF00E676), fontSize: 11, fontWeight: FontWeight.w900),
+                          textAlign: TextAlign.center,
+                        ),
+                      ] else if (match.isFinished) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF00B0FF).withAlpha(32),
+                            borderRadius: BorderRadius.circular(5),
+                            border: Border.all(color: const Color(0xFF00B0FF).withAlpha(90)),
+                          ),
+                          child: Text(
+                            match.status,
+                            style: const TextStyle(color: Color(0xFF80D8FF), fontSize: 10, fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ] else ...[
+                        Text(
+                          match.status,
+                          style: const TextStyle(color: Colors.white70, fontSize: 11.5, fontWeight: FontWeight.w700),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-              ),
-            ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _teamLine(
-                    name: match.homeTeam,
-                    color: match.homeColor,
-                    logoUrl: match.homeLogo,
-                    isWinning: homeWinning,
-                    isFinished: match.isFinished,
-                  ),
-                  const SizedBox(height: 6),
-                  _teamLine(
-                    name: match.awayTeam,
-                    color: match.awayColor,
-                    logoUrl: match.awayLogo,
-                    isWinning: awayWinning,
-                    isFinished: match.isFinished,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            SizedBox(
-              width: 30,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: match.isLive
-                          ? const Color(0xFF00E676).withAlpha(28)
-                          : (homeWinning ? match.homeColor.withAlpha(35) : Colors.transparent),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      showScore ? '${match.homeScore}' : '-',
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w900,
-                        color: match.isLive
-                            ? const Color(0xFF00E676)
-                            : (homeWinning ? Colors.white : Colors.white70),
-                      ),
+                Container(
+                  width: 2.5,
+                  height: 40,
+                  margin: const EdgeInsets.symmetric(horizontal: 8),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(2),
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [match.homeColor, match.awayColor],
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: match.isLive
-                          ? const Color(0xFF00B0FF).withAlpha(28)
-                          : (awayWinning ? match.awayColor.withAlpha(35) : Colors.transparent),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      showScore ? '${match.awayScore}' : '-',
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w900,
-                        color: match.isLive
-                            ? const Color(0xFF00B0FF)
-                            : (awayWinning ? Colors.white : Colors.white70),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 4),
-            GestureDetector(
-              onTap: onToggleFavorite,
-              child: Padding(
-                padding: const EdgeInsets.all(4),
-                child: Icon(
-                  isFavorite ? Icons.star : Icons.star_border,
-                  color: isFavorite ? const Color(0xFFFFAB00) : Colors.white38,
-                  size: 20,
                 ),
-              ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _teamLine(
+                        name: match.homeTeam,
+                        color: match.homeColor,
+                        logoUrl: match.homeLogo,
+                        isWinning: homeWinning,
+                        isFinished: match.isFinished,
+                      ),
+                      const SizedBox(height: 6),
+                      _teamLine(
+                        name: match.awayTeam,
+                        color: match.awayColor,
+                        logoUrl: match.awayLogo,
+                        isWinning: awayWinning,
+                        isFinished: match.isFinished,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 30,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: match.isLive
+                              ? const Color(0xFF00E676).withAlpha(28)
+                              : (homeWinning ? match.homeColor.withAlpha(35) : Colors.transparent),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          showScore ? '${match.homeScore}' : '-',
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w900,
+                            color: match.isLive
+                                ? const Color(0xFF00E676)
+                                : (homeWinning ? Colors.white : Colors.white70),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: match.isLive
+                              ? const Color(0xFF00B0FF).withAlpha(28)
+                              : (awayWinning ? match.awayColor.withAlpha(35) : Colors.transparent),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          showScore ? '${match.awayScore}' : '-',
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w900,
+                            color: match.isLive
+                                ? const Color(0xFF00B0FF)
+                                : (awayWinning ? Colors.white : Colors.white70),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 4),
+                GestureDetector(
+                  onTap: onToggleFavorite,
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Icon(
+                      isFavorite ? Icons.star : Icons.star_border,
+                      color: isFavorite ? const Color(0xFFFFAB00) : Colors.white38,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ],
             ),
+            if (keyEvents.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: keyEvents.map((ev) {
+                  final isRed = ev.type == 'red';
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(isRed ? '🟥' : '⚽', style: const TextStyle(fontSize: 10.5)),
+                      const SizedBox(width: 3),
+                      Text(
+                        '${ev.player} (${ev.minute})',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          color: isRed ? Colors.redAccent : Colors.white70,
+                          fontWeight: isRed ? FontWeight.bold : FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  );
+                }).toList(),
+              ),
+            ],
           ],
         ),
       ),
@@ -1435,7 +1782,7 @@ class MatchCard extends StatelessWidget {
   }
 }
 
-// --- 2. TABELLA FÜL ---
+// --- 2. BŐVÍTETT TABELLA FÜL (8 LIGA + HAZAI/VENDÉG + GÓLLÖVŐLISTA) ---
 class StandingsTab extends StatefulWidget {
   final VoidCallback onOpenSettings;
   const StandingsTab({super.key, required this.onOpenSettings});
@@ -1446,6 +1793,8 @@ class StandingsTab extends StatefulWidget {
 
 class _StandingsTabState extends State<StandingsTab> {
   String selectedLeague = 'Premier League';
+  String venueMode = 'all'; // 'all', 'home', 'away'
+  bool showScorers = false;
   bool _loading = false;
   bool _fromCache = false;
   List<StandingRow> _rows = sampleStandings['Premier League']!;
@@ -1467,7 +1816,11 @@ class _StandingsTabState extends State<StandingsTab> {
 
     setState(() => _loading = true);
     try {
-      final result = await SportsApiService.fetchStandings(selectedLeague, forceRefresh: forceRefresh);
+      final result = await SportsApiService.fetchStandings(
+        selectedLeague,
+        venueFilter: venueMode,
+        forceRefresh: forceRefresh,
+      );
       setState(() {
         _rows = result.data.isNotEmpty
             ? result.data
@@ -1494,13 +1847,18 @@ class _StandingsTabState extends State<StandingsTab> {
   @override
   Widget build(BuildContext context) {
     final leagues = SportsApiService.highlightlyLeagueIds.keys.toList();
+    final scorers = sampleTopScorers[selectedLeague] ??
+        const [
+          TopScorerRow(rank: 1, player: 'Liga gólkirály', team: 'Éllovas', goals: 9, assists: 3),
+          TopScorerRow(rank: 2, player: 'Támadó #2', team: 'Üldöző', goals: 7, assists: 2),
+        ];
 
     return SafeArea(
       child: Column(
         children: [
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(20, 16, 12, 18),
+            padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
             decoration: const BoxDecoration(
               gradient: LinearGradient(colors: [Color(0xFF1C2541), Color(0xFF3A506B)]),
               borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
@@ -1516,7 +1874,7 @@ class _StandingsTabState extends State<StandingsTab> {
                     Text(
                       _fromCache
                           ? 'Gyorsítótárból (${ApiConfig.providerName}) • 2 órás védelem'
-                          : '${ApiConfig.providerName} élő állások és pontok',
+                          : '${ApiConfig.providerName} állások, hazai/vendég & gólok',
                       style: TextStyle(fontSize: 12, color: _fromCache ? const Color(0xFF00B0FF) : Colors.white70),
                     ),
                   ],
@@ -1541,10 +1899,10 @@ class _StandingsTabState extends State<StandingsTab> {
           ),
           if (_loading) const LinearProgressIndicator(color: Color(0xFF00E676), backgroundColor: Colors.transparent),
           SizedBox(
-            height: 56,
+            height: 52,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
               itemCount: leagues.length,
               itemBuilder: (context, index) {
                 final l = leagues[index];
@@ -1552,7 +1910,7 @@ class _StandingsTabState extends State<StandingsTab> {
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: ChoiceChip(
-                    label: Text(l),
+                    label: Text(l, style: const TextStyle(fontSize: 12)),
                     selected: isSelected,
                     selectedColor: const Color(0xFF00E676),
                     backgroundColor: const Color(0xFF1C2541),
@@ -1566,53 +1924,149 @@ class _StandingsTabState extends State<StandingsTab> {
               },
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          // Hazai / Vendég / Összes / Góllövőlista váltó
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             child: Row(
-              children: const [
-                SizedBox(width: 28, child: Text('#', style: TextStyle(color: Colors.white54, fontSize: 12))),
-                Expanded(child: Text('Csapat', style: TextStyle(color: Colors.white54, fontSize: 12))),
-                SizedBox(width: 28, child: Text('M', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 12))),
-                SizedBox(width: 36, child: Text('GK', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 12))),
-                SizedBox(width: 34, child: Text('P', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold, fontSize: 12))),
+              children: [
+                ChoiceChip(
+                  label: const Text('Összes', style: TextStyle(fontSize: 11)),
+                  selected: !showScorers && venueMode == 'all',
+                  selectedColor: const Color(0xFF00B0FF),
+                  backgroundColor: const Color(0xFF1C2541),
+                  labelStyle: TextStyle(color: (!showScorers && venueMode == 'all') ? Colors.black : Colors.white, fontWeight: FontWeight.bold),
+                  onSelected: (_) {
+                    setState(() {
+                      showScorers = false;
+                      venueMode = 'all';
+                    });
+                    _loadStandings(forceRefresh: false);
+                  },
+                ),
+                const SizedBox(width: 6),
+                ChoiceChip(
+                  label: const Text('Hazai', style: TextStyle(fontSize: 11)),
+                  selected: !showScorers && venueMode == 'home',
+                  selectedColor: const Color(0xFF00B0FF),
+                  backgroundColor: const Color(0xFF1C2541),
+                  labelStyle: TextStyle(color: (!showScorers && venueMode == 'home') ? Colors.black : Colors.white, fontWeight: FontWeight.bold),
+                  onSelected: (_) {
+                    setState(() {
+                      showScorers = false;
+                      venueMode = 'home';
+                    });
+                    _loadStandings(forceRefresh: false);
+                  },
+                ),
+                const SizedBox(width: 6),
+                ChoiceChip(
+                  label: const Text('Vendég', style: TextStyle(fontSize: 11)),
+                  selected: !showScorers && venueMode == 'away',
+                  selectedColor: const Color(0xFF00B0FF),
+                  backgroundColor: const Color(0xFF1C2541),
+                  labelStyle: TextStyle(color: (!showScorers && venueMode == 'away') ? Colors.black : Colors.white, fontWeight: FontWeight.bold),
+                  onSelected: (_) {
+                    setState(() {
+                      showScorers = false;
+                      venueMode = 'away';
+                    });
+                    _loadStandings(forceRefresh: false);
+                  },
+                ),
+                const SizedBox(width: 6),
+                ChoiceChip(
+                  label: const Text('⚽ Góllövők', style: TextStyle(fontSize: 11)),
+                  selected: showScorers,
+                  selectedColor: const Color(0xFFFFAB00),
+                  backgroundColor: const Color(0xFF1C2541),
+                  labelStyle: TextStyle(color: showScorers ? Colors.black : Colors.white, fontWeight: FontWeight.bold),
+                  onSelected: (_) => setState(() => showScorers = true),
+                ),
               ],
             ),
           ),
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: _rows.length,
-              itemBuilder: (context, index) {
-                final r = _rows[index];
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1C2541),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border(left: BorderSide(color: _zoneColor(r.zone), width: 4)),
-                  ),
-                  child: Row(
-                    children: [
-                      SizedBox(width: 24, child: Text('${r.pos}.', style: const TextStyle(fontWeight: FontWeight.bold))),
-                      CachedTeamLogo(
-                        teamName: r.team,
-                        fallbackColor: r.color,
-                        logoUrl: r.logo,
-                        radius: 11,
-                        showInitialsOnFallback: false,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(child: Text(r.team, style: const TextStyle(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
-                      SizedBox(width: 28, child: Text('${r.played}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70))),
-                      SizedBox(width: 36, child: Text(r.gd > 0 ? '+${r.gd}' : '${r.gd}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70))),
-                      SizedBox(width: 34, child: Text('${r.points}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF00E676)))),
-                    ],
-                  ),
-                );
-              },
+          if (!showScorers) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              child: Row(
+                children: const [
+                  SizedBox(width: 28, child: Text('#', style: TextStyle(color: Colors.white54, fontSize: 12))),
+                  Expanded(child: Text('Csapat', style: TextStyle(color: Colors.white54, fontSize: 12))),
+                  SizedBox(width: 28, child: Text('M', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 12))),
+                  SizedBox(width: 36, child: Text('GK', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 12))),
+                  SizedBox(width: 34, child: Text('P', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold, fontSize: 12))),
+                ],
+              ),
             ),
-          ),
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: _rows.length,
+                itemBuilder: (context, index) {
+                  final r = _rows[index];
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1C2541),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border(left: BorderSide(color: _zoneColor(r.zone), width: 4)),
+                    ),
+                    child: Row(
+                      children: [
+                        SizedBox(width: 24, child: Text('${r.pos}.', style: const TextStyle(fontWeight: FontWeight.bold))),
+                        CachedTeamLogo(
+                          teamName: r.team,
+                          fallbackColor: r.color,
+                          logoUrl: r.logo,
+                          radius: 11,
+                          showInitialsOnFallback: false,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(child: Text(r.team, style: const TextStyle(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
+                        SizedBox(width: 28, child: Text('${r.played}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70))),
+                        SizedBox(width: 36, child: Text(r.gd > 0 ? '+${r.gd}' : '${r.gd}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70))),
+                        SizedBox(width: 34, child: Text('${r.points}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF00E676)))),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ] else
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: scorers.length,
+                itemBuilder: (context, idx) {
+                  final sc = scorers[idx];
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(color: const Color(0xFF1C2541), borderRadius: BorderRadius.circular(14)),
+                    child: Row(
+                      children: [
+                        Text('${sc.rank}.', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFFFAB00))),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(sc.player, style: const TextStyle(fontWeight: FontWeight.bold)),
+                              Text(sc.team, style: const TextStyle(fontSize: 11, color: Colors.white60)),
+                            ],
+                          ),
+                        ),
+                        Text('⚽ ${sc.goals}', style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF00E676))),
+                        const SizedBox(width: 12),
+                        Text('🅰️ ${sc.assists}', style: const TextStyle(fontSize: 12, color: Colors.white70)),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
         ],
       ),
     );
@@ -1622,10 +2076,17 @@ class _StandingsTabState extends State<StandingsTab> {
 // --- 3. KEDVENCEK FÜL ---
 class FavoritesTab extends StatelessWidget {
   final List<MatchData> allMatches;
+  final Set<String> recentlyScoredIds;
   final Set<String> favoriteIds;
   final ValueChanged<String> onToggleFavorite;
 
-  const FavoritesTab({super.key, required this.allMatches, required this.favoriteIds, required this.onToggleFavorite});
+  const FavoritesTab({
+    super.key,
+    required this.allMatches,
+    required this.recentlyScoredIds,
+    required this.favoriteIds,
+    required this.onToggleFavorite,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1646,7 +2107,7 @@ class FavoritesTab extends StatelessWidget {
               children: [
                 Text('Kedvenc Meccsek ⭐', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                 SizedBox(height: 4),
-                Text('Kiemelt találkozóid egy helyen', style: TextStyle(fontSize: 12, color: Colors.white70)),
+                Text('Gól-, piros lap és vége értesítésekkel', style: TextStyle(fontSize: 12, color: Colors.white70)),
               ],
             ),
           ),
@@ -1675,7 +2136,12 @@ class FavoritesTab extends StatelessWidget {
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(color: const Color(0xFFFFAB00).withAlpha(80)),
                         ),
-                        child: MatchCard(match: match, isFavorite: true, onToggleFavorite: () => onToggleFavorite(match.id)),
+                        child: MatchCard(
+                          match: match,
+                          isFavorite: true,
+                          isGoalFlash: recentlyScoredIds.contains(match.id),
+                          onToggleFavorite: () => onToggleFavorite(match.id),
+                        ),
                       );
                     },
                   ),
@@ -1686,7 +2152,7 @@ class FavoritesTab extends StatelessWidget {
   }
 }
 
-// --- RÉSZLETES STATISZTIKA ÉS ÖSSZEFOGLALÓK KÉPERNYŐ ---
+// --- RÉSZLETES NÉZET: STATISZTIKÁK + FORMA/H2H + ESEMÉNYEK + KEZDŐCSAPATOK + ÖSSZEFOGLALÓK ---
 class MatchStatsScreen extends StatefulWidget {
   final MatchData match;
   const MatchStatsScreen({super.key, required this.match});
@@ -1723,7 +2189,6 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
   }
 
   Future<void> _fetchDetails({bool forceRefresh = false}) async {
-    if (!ApiConfig.hasValidKey || !_match.isFromApi) return;
     setState(() => _loadingDetails = true);
     final result = await SportsApiService.enrichMatchDetails(_match, forceRefresh: forceRefresh);
     if (mounted) {
@@ -1735,18 +2200,48 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
     }
   }
 
+  Widget _formBadge(String code) {
+    Color bg;
+    if (code == 'GY') {
+      bg = const Color(0xFF00E676);
+    } else if (code == 'D') {
+      bg = const Color(0xFFFFAB00);
+    } else {
+      bg = const Color(0xFFFF1744);
+    }
+    return Container(
+      width: 22,
+      height: 22,
+      margin: const EdgeInsets.only(right: 4),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
+      child: Text(
+        code,
+        style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 10),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final intervalSec = ApiConfig.isStatPal ? 15 : 30;
 
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Scaffold(
         appBar: AppBar(
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('${_match.country} • ${_match.league}', style: const TextStyle(fontSize: 15)),
+              Row(
+                children: [
+                  CountryFlagBadge(countryName: _match.country, flagUrl: _match.countryFlagUrl),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text('${_match.country} • ${_match.league}', style: const TextStyle(fontSize: 15), overflow: TextOverflow.ellipsis),
+                  ),
+                ],
+              ),
               if (_fromCache)
                 Text('Gyorsítótárból betöltve (${ApiConfig.providerName})', style: const TextStyle(fontSize: 11, color: Color(0xFF00B0FF)))
               else if (_match.isLive && _match.isFromApi)
@@ -1755,16 +2250,15 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
           ),
           backgroundColor: const Color(0xFF1C2541),
           actions: [
-            if (ApiConfig.hasValidKey && _match.isFromApi)
-              IconButton(onPressed: () => _fetchDetails(forceRefresh: true), icon: const Icon(Icons.refresh)),
+            IconButton(onPressed: () => _fetchDetails(forceRefresh: true), icon: const Icon(Icons.refresh)),
           ],
         ),
         body: Column(
           children: [
             if (_loadingDetails) const LinearProgressIndicator(color: Color(0xFF00E676), backgroundColor: Colors.transparent),
             Container(
-              margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              padding: const EdgeInsets.all(20),
+              margin: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+              padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
                 gradient: LinearGradient(colors: [_match.homeColor.withAlpha(75), const Color(0xFF1C2541), _match.awayColor.withAlpha(75)]),
                 borderRadius: BorderRadius.circular(20),
@@ -1777,13 +2271,17 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                       children: [
                         CachedTeamLogo(teamName: _match.homeTeam, fallbackColor: _match.homeColor, logoUrl: _match.homeLogo, radius: 22),
                         const SizedBox(height: 6),
-                        Text(_match.homeTeam, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                        Text(_match.homeTeam, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold)),
+                        if (_match.homeForm.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Row(mainAxisAlignment: MainAxisAlignment.center, children: _match.homeForm.map(_formBadge).toList()),
+                        ],
                       ],
                     ),
                   ),
                   Column(
                     children: [
-                      Text('${_match.homeScore} : ${_match.awayScore}', style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Color(0xFF00E676))),
+                      Text('${_match.homeScore} : ${_match.awayScore}', style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: Color(0xFF00E676))),
                       Text(_match.isLive ? 'ÉLŐ • ${_match.status}' : _match.status, style: const TextStyle(fontSize: 12, color: Colors.white70)),
                     ],
                   ),
@@ -1792,7 +2290,11 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                       children: [
                         CachedTeamLogo(teamName: _match.awayTeam, fallbackColor: _match.awayColor, logoUrl: _match.awayLogo, radius: 22),
                         const SizedBox(height: 6),
-                        Text(_match.awayTeam, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                        Text(_match.awayTeam, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold)),
+                        if (_match.awayForm.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Row(mainAxisAlignment: MainAxisAlignment.center, children: _match.awayForm.map(_formBadge).toList()),
+                        ],
                       ],
                     ),
                   ),
@@ -1803,7 +2305,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
               Container(
                 width: double.infinity,
                 margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                 decoration: BoxDecoration(
                   color: const Color(0xFF00B0FF).withAlpha(30),
                   borderRadius: BorderRadius.circular(10),
@@ -1816,24 +2318,50 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                 ),
               ),
             const TabBar(
+              isScrollable: true,
               indicatorColor: Color(0xFF00E676),
               labelColor: Color(0xFF00E676),
               unselectedLabelColor: Colors.white60,
-              tabs: [Tab(text: 'Statisztikák'), Tab(text: 'Események'), Tab(text: 'Összefoglalók 🎬')],
+              tabs: [
+                Tab(text: 'Statisztika & H2H'),
+                Tab(text: 'Események'),
+                Tab(text: 'Kezdőcsapatok'),
+                Tab(text: 'Összefoglalók 🎬'),
+              ],
             ),
             Expanded(
               child: TabBarView(
                 children: [
+                  // 1. Statisztika + Egymás elleni (H2H)
                   ListView(
-                    padding: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.all(18),
                     children: [
                       _statBar('Labdabirtoklás (%)', _match.possessionHome, 100 - _match.possessionHome, _match.homeColor, _match.awayColor),
                       _statBar('Összes lövés', _match.shotsHome, _match.shotsAway, _match.homeColor, _match.awayColor),
                       _statBar('Kapura lövések', _match.shotsOnTargetHome, _match.shotsOnTargetAway, _match.homeColor, _match.awayColor),
                       _statBar('Szögletek', _match.cornersHome, _match.cornersAway, _match.homeColor, _match.awayColor),
                       _statBar('Szabálytalanságok', _match.foulsHome, _match.foulsAway, _match.homeColor, _match.awayColor),
+                      if (_match.h2hFixtures.isNotEmpty) ...[
+                        const Divider(color: Colors.white12, height: 20),
+                        const Text('Egymás elleni mérkőzések (H2H)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        const SizedBox(height: 8),
+                        ..._match.h2hFixtures.map((h) => Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              decoration: BoxDecoration(color: const Color(0xFF1C2541), borderRadius: BorderRadius.circular(12)),
+                              child: Row(
+                                children: [
+                                  Text(h.dateLabel, style: const TextStyle(fontSize: 11, color: Colors.white54)),
+                                  const SizedBox(width: 10),
+                                  Expanded(child: Text('${h.homeTeam} - ${h.awayTeam}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
+                                  Text(h.scoreLabel, style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF00E676))),
+                                ],
+                              ),
+                            )),
+                      ],
                     ],
                   ),
+                  // 2. Események
                   _match.events.isEmpty
                       ? const Center(child: Text('Még nincs rögzített esemény ehhez a mérkőzéshez.', style: TextStyle(color: Colors.white60)))
                       : ListView.builder(
@@ -1866,6 +2394,16 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                             );
                           },
                         ),
+                  // 3. Kezdőcsapatok és formáció
+                  ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      _lineupSection(_match.homeTeam, _match.homeColor, _match.homeLineup),
+                      const SizedBox(height: 16),
+                      _lineupSection(_match.awayTeam, _match.awayColor, _match.awayLineup),
+                    ],
+                  ),
+                  // 4. Összefoglalók
                   _match.highlights.isEmpty
                       ? Center(
                           child: Padding(
@@ -1928,6 +2466,69 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
     );
   }
 
+  Widget _lineupSection(String teamName, Color accent, TeamLineup? lineup) {
+    if (lineup == null || (lineup.starters.isEmpty && lineup.substitutes.isEmpty)) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(color: const Color(0xFF1C2541), borderRadius: BorderRadius.circular(14)),
+        child: Text('$teamName – nincs felállás adat.', style: const TextStyle(color: Colors.white60)),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1C2541),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: accent.withAlpha(80)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(teamName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(color: accent.withAlpha(35), borderRadius: BorderRadius.circular(8)),
+                child: Text(lineup.formation, style: TextStyle(color: accent, fontWeight: FontWeight.w900, fontSize: 12)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Text('Kezdőcsapat', style: TextStyle(fontSize: 11.5, color: Colors.white54, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 6),
+          ...lineup.starters.map((p) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(
+                  children: [
+                    SizedBox(width: 26, child: Text(p.number, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00E676), fontSize: 12))),
+                    Expanded(child: Text(p.name, style: const TextStyle(fontSize: 12.5))),
+                    Text(p.position, style: const TextStyle(fontSize: 11, color: Colors.white54)),
+                  ],
+                ),
+              )),
+          if (lineup.substitutes.isNotEmpty) ...[
+            const Divider(color: Colors.white12, height: 14),
+            const Text('Cserék', style: TextStyle(fontSize: 11.5, color: Colors.white54, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 6),
+            ...lineup.substitutes.map((p) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2.5),
+                  child: Row(
+                    children: [
+                      SizedBox(width: 26, child: Text(p.number, style: const TextStyle(color: Colors.white60, fontSize: 11.5))),
+                      Expanded(child: Text(p.name, style: const TextStyle(fontSize: 12, color: Colors.white70))),
+                      Text(p.position, style: const TextStyle(fontSize: 10.5, color: Colors.white38)),
+                    ],
+                  ),
+                )),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _eventIcon(String type) {
     if (type == 'yellow') {
       return Container(width: 14, height: 18, decoration: BoxDecoration(color: Colors.amber, borderRadius: BorderRadius.circular(3)));
@@ -1941,7 +2542,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
   Widget _statBar(String title, int homeVal, int awayVal, Color c1, Color c2) {
     final total = (homeVal + awayVal) == 0 ? 1 : (homeVal + awayVal);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 18),
+      padding: const EdgeInsets.only(bottom: 16),
       child: Column(
         children: [
           Row(
