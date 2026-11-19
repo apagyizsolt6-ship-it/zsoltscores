@@ -99,12 +99,12 @@ class _CachedTeamLogoState extends State<CachedTeamLogo> {
                 height: imgSize,
                 fit: BoxFit.contain,
                 errorBuilder: (_, __, ___) => widget.showInitialsOnFallback
-                    ? Text(initials, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
+                    ? Text(initials, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10))
                     : const SizedBox(),
               ),
             )
           : (widget.showInitialsOnFallback
-              ? Text(initials, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
+              ? Text(initials, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10))
               : const SizedBox()),
     );
   }
@@ -516,7 +516,7 @@ class _MainShellState extends State<MainShell> {
   }
 }
 
-// --- 1. MECCSEK FÜL ---
+// --- 1. MECCSEK FÜL (EREDMÉNYEK.COM LIGA-CSOPORTOSÍTOTT NÉZET, SZÍNES STÍLUSBAN) ---
 class MatchesTab extends StatefulWidget {
   final List<MatchData> matches;
   final DateTime selectedDate;
@@ -555,6 +555,25 @@ class _MatchesTabState extends State<MatchesTab> {
   String selectedLeague = 'Összes';
   bool onlyLive = false;
   String searchQuery = '';
+  final Set<String> _collapsedLeagues = {};
+
+  String _formatHungarianDayLabel(DateTime dt) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final target = DateTime(dt.year, dt.month, dt.day);
+    final diff = target.difference(today).inDays;
+
+    const weekdays = ['HÉ', 'KE', 'SZE', 'CSÜ', 'PÉN', 'SZO', 'VAS'];
+    const months = ['JAN', 'FEB', 'MÁR', 'ÁPR', 'MÁJ', 'JÚN', 'JÚL', 'AUG', 'SZE', 'OKT', 'NOV', 'DEC'];
+    final wd = weekdays[(dt.weekday - 1).clamp(0, 6)];
+    final mo = months[(dt.month - 1).clamp(0, 11)];
+    final base = '$wd, ${dt.day.toString().padLeft(2, '0')} $mo';
+
+    if (diff == 0) return 'MA • $base';
+    if (diff == -1) return 'TEGNAP • $base';
+    if (diff == 1) return 'HOLNAP • $base';
+    return base;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -573,13 +592,20 @@ class _MatchesTabState extends State<MatchesTab> {
       return matchesLeague && matchesLive && matchesSearch;
     }).toList();
 
+    // Liga szerinti csoportosítás (Eredmények.com stílusú liga-szekciók)
+    final groupedByLeague = <String, List<MatchData>>{};
+    for (final m in filteredMatches) {
+      groupedByLeague.putIfAbsent(m.league, () => []).add(m);
+    }
+    final leagueKeys = groupedByLeague.keys.toList();
+
     final countText = '${widget.matches.length} meccs';
     final provName = ApiConfig.providerName;
     final sourceSubtitle = !widget.isLiveApiData
-        ? 'Demo mód ($provName kiválasztva)'
+        ? 'Demo mód ($provName)'
         : (widget.loadedFromCache
             ? 'Tárolóból ($provName) • $countText'
-            : '$provName Élő API • $countText');
+            : '$provName Élő • $countText');
     final sourceColor = !widget.isLiveApiData
         ? Colors.amberAccent
         : (widget.loadedFromCache ? const Color(0xFF00B0FF) : const Color(0xFF00E676));
@@ -587,42 +613,86 @@ class _MatchesTabState extends State<MatchesTab> {
     return SafeArea(
       child: Column(
         children: [
+          // Színes felső fejléc (zsoltscores identitás)
           Container(
-            padding: const EdgeInsets.fromLTRB(18, 14, 10, 16),
+            padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
             decoration: const BoxDecoration(
-              gradient: LinearGradient(colors: [Color(0xFF1C2541), Color(0xFF3A506B)]),
-              borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
+              gradient: LinearGradient(
+                colors: [Color(0xFF1C2541), Color(0xFF2B3E63), Color(0xFF0F4C5C)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
+              boxShadow: [
+                BoxShadow(color: Colors.black38, blurRadius: 8, offset: Offset(0, 3)),
+              ],
             ),
             child: Column(
               children: [
                 Row(
                   children: [
+                    Container(
+                      padding: const EdgeInsets.all(7),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(colors: [Color(0xFF00E676), Color(0xFF00B0FF)]),
+                        borderRadius: BorderRadius.circular(11),
+                      ),
+                      child: const Icon(Icons.sports_soccer, color: Color(0xFF0B132B), size: 20),
+                    ),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('zsoltscores ⚽', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
-                          const SizedBox(height: 2),
-                          Text(sourceSubtitle, style: TextStyle(fontSize: 11, color: sourceColor, fontWeight: FontWeight.w600)),
+                          const Text(
+                            'zsoltscores',
+                            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -0.3),
+                          ),
+                          Text(
+                            sourceSubtitle,
+                            style: TextStyle(fontSize: 11, color: sourceColor, fontWeight: FontWeight.w600),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ],
                       ),
                     ),
+                    // Eredmények.com stílusú ÉLŐ szűrőgomb, élénk neonszínnel
                     GestureDetector(
                       onTap: () => setState(() => onlyLive = !onlyLive),
-                      child: Container(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
-                          color: onlyLive ? const Color(0xFF00E676) : const Color(0xFF00E676).withAlpha(45),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: const Color(0xFF00E676)),
-                        ),
-                        child: Text(
-                          onlyLive ? 'CSAK ÉLŐ ($liveCount)' : '$liveCount ÉLŐ',
-                          style: TextStyle(
-                            color: onlyLive ? Colors.black : const Color(0xFF00E676),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 11,
+                          gradient: onlyLive
+                              ? const LinearGradient(colors: [Color(0xFFFF1744), Color(0xFFFF6D00)])
+                              : null,
+                          color: onlyLive ? null : const Color(0xFFFF1744).withAlpha(38),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: onlyLive ? const Color(0xFFFF5252) : const Color(0xFFFF1744).withAlpha(170),
                           ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 7,
+                              height: 7,
+                              decoration: BoxDecoration(
+                                color: onlyLive ? Colors.white : const Color(0xFFFF1744),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              'ÉLŐ ($liveCount)',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -630,40 +700,52 @@ class _MatchesTabState extends State<MatchesTab> {
                       IconButton(
                         visualDensity: VisualDensity.compact,
                         onPressed: widget.onRefresh,
-                        icon: const Icon(Icons.refresh, color: Colors.white70),
+                        icon: const Icon(Icons.refresh, color: Colors.white70, size: 21),
                       ),
                     IconButton(
                       visualDensity: VisualDensity.compact,
                       onPressed: widget.onOpenSettings,
-                      icon: Icon(Icons.settings, color: ApiConfig.hasValidKey ? const Color(0xFF00E676) : Colors.amberAccent),
+                      icon: Icon(
+                        Icons.settings,
+                        color: ApiConfig.hasValidKey ? const Color(0xFF00E676) : Colors.amberAccent,
+                        size: 21,
+                      ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 10),
+                // Eredmények.com stílusú dátumsáv + keresőmező
                 Row(
                   children: [
                     Container(
+                      height: 38,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF0B132B).withAlpha(180),
-                        borderRadius: BorderRadius.circular(12),
+                        color: const Color(0xFF0B132B).withAlpha(200),
+                        borderRadius: BorderRadius.circular(11),
+                        border: Border.all(color: const Color(0xFF00B0FF).withAlpha(70)),
                       ),
                       child: Row(
                         children: [
                           IconButton(
-                            visualDensity: VisualDensity.compact,
-                            icon: const Icon(Icons.chevron_left, size: 20),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 32, minHeight: 36),
+                            icon: const Icon(Icons.chevron_left, size: 19, color: Color(0xFF00B0FF)),
                             onPressed: () => widget.onChangeDate(-1),
                           ),
                           GestureDetector(
                             onTap: widget.onJumpToday,
-                            child: Text(
-                              SportsApiService.formatDate(widget.selectedDate),
-                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 4),
+                              child: Text(
+                                _formatHungarianDayLabel(widget.selectedDate),
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white),
+                              ),
                             ),
                           ),
                           IconButton(
-                            visualDensity: VisualDensity.compact,
-                            icon: const Icon(Icons.chevron_right, size: 20),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 32, minHeight: 36),
+                            icon: const Icon(Icons.chevron_right, size: 19, color: Color(0xFF00B0FF)),
                             onPressed: () => widget.onChangeDate(1),
                           ),
                         ],
@@ -671,16 +753,27 @@ class _MatchesTabState extends State<MatchesTab> {
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: TextField(
-                        onChanged: (val) => setState(() => searchQuery = val),
-                        decoration: InputDecoration(
-                          hintText: 'Csapat vagy liga keresése...',
-                          hintStyle: const TextStyle(color: Colors.white54, fontSize: 13),
-                          prefixIcon: const Icon(Icons.search, color: Color(0xFF00B0FF), size: 20),
-                          filled: true,
-                          fillColor: const Color(0xFF0B132B).withAlpha(180),
-                          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                      child: SizedBox(
+                        height: 38,
+                        child: TextField(
+                          onChanged: (val) => setState(() => searchQuery = val),
+                          style: const TextStyle(fontSize: 13),
+                          decoration: InputDecoration(
+                            hintText: 'Keresés csapatra vagy ligára...',
+                            hintStyle: const TextStyle(color: Colors.white54, fontSize: 12),
+                            prefixIcon: const Icon(Icons.search, color: Color(0xFF00E676), size: 18),
+                            filled: true,
+                            fillColor: const Color(0xFF0B132B).withAlpha(200),
+                            contentPadding: EdgeInsets.zero,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(11),
+                              borderSide: BorderSide(color: Colors.white.withAlpha(25)),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(11),
+                              borderSide: BorderSide(color: Colors.white.withAlpha(25)),
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -689,90 +782,250 @@ class _MatchesTabState extends State<MatchesTab> {
               ],
             ),
           ),
+
           if (widget.isLoading)
             const LinearProgressIndicator(color: Color(0xFF00E676), backgroundColor: Colors.transparent),
+
           if (!ApiConfig.hasValidKey)
             Container(
-              margin: const EdgeInsets.fromLTRB(16, 12, 16, 2),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              margin: const EdgeInsets.fromLTRB(12, 8, 12, 2),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: const Color(0xFF1C2541),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFF00E676).withAlpha(140)),
+                gradient: LinearGradient(
+                  colors: [const Color(0xFF00E676).withAlpha(32), const Color(0xFF00B0FF).withAlpha(28)],
+                ),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF00E676).withAlpha(130)),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.vpn_key, color: Color(0xFF00E676), size: 22),
-                  const SizedBox(width: 10),
+                  const Icon(Icons.vpn_key, color: Color(0xFF00E676), size: 19),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'Add meg a ${ApiConfig.providerName} kulcsodat az élő meccsekhez!',
                       style: const TextStyle(fontSize: 12),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   FilledButton(
-                    style: FilledButton.styleFrom(backgroundColor: const Color(0xFF00E676), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF00E676),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      minimumSize: Size.zero,
+                    ),
                     onPressed: widget.onOpenSettings,
-                    child: const Text('Kulcs beírása', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 12)),
+                    child: const Text('Kulcs', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11)),
                   ),
                 ],
               ),
             ),
+
           if (widget.statusMessage != null)
             GestureDetector(
               onTap: widget.onOpenSettings,
               child: Container(
                 width: double.infinity,
-                margin: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                 decoration: BoxDecoration(
-                  color: Colors.amber.withAlpha(35),
+                  color: Colors.amber.withAlpha(30),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: Colors.amber.withAlpha(120)),
                 ),
-                child: Text(widget.statusMessage!, style: const TextStyle(fontSize: 12, color: Colors.amberAccent), textAlign: TextAlign.center),
+                child: Text(
+                  widget.statusMessage!,
+                  style: const TextStyle(fontSize: 11, color: Colors.amberAccent),
+                  textAlign: TextAlign.center,
+                ),
               ),
             ),
+
+          // Gyors liga-választó sáv
           SizedBox(
-            height: 54,
+            height: 46,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
               itemCount: dynamicLeagues.length,
               itemBuilder: (context, index) {
                 final league = dynamicLeagues[index];
                 final isSelected = selectedLeague == league;
                 final label = league == 'Összes' ? 'Összes (${widget.matches.length})' : league;
+                final accent = league == 'Összes'
+                    ? const Color(0xFF00E676)
+                    : SportsApiService.colorFromName(league);
+
                 return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    label: Text(label),
-                    selected: isSelected,
-                    selectedColor: const Color(0xFF00B0FF),
-                    backgroundColor: const Color(0xFF1C2541),
-                    labelStyle: TextStyle(color: isSelected ? Colors.black : Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-                    onSelected: (_) => setState(() => selectedLeague = league),
+                  padding: const EdgeInsets.only(right: 7),
+                  child: GestureDetector(
+                    onTap: () => setState(() => selectedLeague = league),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 160),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        gradient: isSelected
+                            ? LinearGradient(colors: [accent, accent.withAlpha(190)])
+                            : null,
+                        color: isSelected ? null : const Color(0xFF1C2541),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: isSelected ? accent : Colors.white12,
+                        ),
+                      ),
+                      child: Text(
+                        label,
+                        style: TextStyle(
+                          color: isSelected ? Colors.black : Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 11.5,
+                        ),
+                      ),
+                    ),
                   ),
                 );
               },
             ),
           ),
+
+          // Eredmények.com stílusú, ligánként csoportosított, színes meccslista
           Expanded(
             child: RefreshIndicator(
               color: const Color(0xFF00E676),
               onRefresh: widget.onRefresh,
-              child: filteredMatches.isEmpty
-                  ? ListView(children: const [SizedBox(height: 100), Center(child: Text('Nincs a szűrésnek megfelelő meccs.', style: TextStyle(color: Colors.white60)))])
+              child: leagueKeys.isEmpty
+                  ? ListView(
+                      children: const [
+                        SizedBox(height: 100),
+                        Center(child: Text('Nincs a szűrésnek megfelelő meccs.', style: TextStyle(color: Colors.white60))),
+                      ],
+                    )
                   : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: filteredMatches.length,
-                      itemBuilder: (context, index) {
-                        final match = filteredMatches[index];
-                        return MatchCard(
-                          match: match,
-                          isFavorite: widget.favoriteIds.contains(match.id),
-                          onToggleFavorite: () => widget.onToggleFavorite(match.id),
+                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
+                      itemCount: leagueKeys.length,
+                      itemBuilder: (context, lIdx) {
+                        final leagueName = leagueKeys[lIdx];
+                        final leagueMatches = groupedByLeague[leagueName]!;
+                        final isCollapsed = _collapsedLeagues.contains(leagueName);
+                        final leagueAccent = SportsApiService.colorFromName(leagueName);
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF131D3B),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: leagueAccent.withAlpha(85)),
+                            boxShadow: [
+                              BoxShadow(
+                                color: leagueAccent.withAlpha(18),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            children: [
+                              // Eredmények.com stílusú színes liga-fejléc sáv
+                              InkWell(
+                                borderRadius: BorderRadius.vertical(
+                                  top: const Radius.circular(14),
+                                  bottom: Radius.circular(isCollapsed ? 14 : 0),
+                                ),
+                                onTap: () {
+                                  setState(() {
+                                    if (isCollapsed) {
+                                      _collapsedLeagues.remove(leagueName);
+                                    } else {
+                                      _collapsedLeagues.add(leagueName);
+                                    }
+                                  });
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        leagueAccent.withAlpha(72),
+                                        const Color(0xFF1C2541),
+                                        leagueAccent.withAlpha(26),
+                                      ],
+                                    ),
+                                    borderRadius: BorderRadius.vertical(
+                                      top: const Radius.circular(14),
+                                      bottom: Radius.circular(isCollapsed ? 14 : 0),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 4,
+                                        height: 16,
+                                        decoration: BoxDecoration(
+                                          color: leagueAccent,
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Icon(Icons.emoji_events, size: 15, color: leagueAccent),
+                                      const SizedBox(width: 7),
+                                      Expanded(
+                                        child: Text(
+                                          leagueName.toUpperCase(),
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w900,
+                                            color: Colors.white,
+                                            letterSpacing: 0.4,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black38,
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: Text(
+                                          '${leagueMatches.length}',
+                                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: leagueAccent),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Icon(
+                                        isCollapsed ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_up,
+                                        size: 18,
+                                        color: Colors.white70,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+
+                              // A ligához tartozó kompakt soronkénti meccsek
+                              if (!isCollapsed)
+                                ...List.generate(leagueMatches.length, (mIdx) {
+                                  final match = leagueMatches[mIdx];
+                                  final isLast = mIdx == leagueMatches.length - 1;
+                                  return Column(
+                                    children: [
+                                      MatchCard(
+                                        match: match,
+                                        isFavorite: widget.favoriteIds.contains(match.id),
+                                        onToggleFavorite: () => widget.onToggleFavorite(match.id),
+                                      ),
+                                      if (!isLast)
+                                        Divider(
+                                          height: 1,
+                                          thickness: 1,
+                                          color: Colors.white.withAlpha(14),
+                                        ),
+                                    ],
+                                  );
+                                }),
+                            ],
+                          ),
                         );
                       },
                     ),
@@ -784,60 +1037,199 @@ class _MatchesTabState extends State<MatchesTab> {
   }
 }
 
-// --- MECCSKÁRTYA ---
+// --- EREDMÉNYEK.COM STÍLUSÚ, SZÍNES MECCSSOR ---
 class MatchCard extends StatelessWidget {
   final MatchData match;
   final bool isFavorite;
   final VoidCallback onToggleFavorite;
 
-  const MatchCard({super.key, required this.match, required this.isFavorite, required this.onToggleFavorite});
+  const MatchCard({
+    super.key,
+    required this.match,
+    required this.isFavorite,
+    required this.onToggleFavorite,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    final homeWinning = match.isLive || match.isFinished ? match.homeScore > match.awayScore : false;
+    final awayWinning = match.isLive || match.isFinished ? match.awayScore > match.homeScore : false;
+    final showScore = match.isLive || match.isFinished;
+
+    return InkWell(
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MatchStatsScreen(match: match))),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 14),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
         decoration: BoxDecoration(
-          gradient: LinearGradient(colors: [match.homeColor.withAlpha(64), const Color(0xFF1C2541), match.awayColor.withAlpha(64)]),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: match.isLive ? const Color(0xFF00E676).withAlpha(128) : Colors.white12),
-        ),
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(child: Text(match.league, style: const TextStyle(color: Colors.white70, fontSize: 12), overflow: TextOverflow.ellipsis)),
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(color: match.isLive ? const Color(0xFFFF1744) : Colors.white12, borderRadius: BorderRadius.circular(8)),
-                      child: Text(match.isLive ? 'ÉLŐ ${match.status}' : match.status, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                    ),
-                    const SizedBox(width: 8),
-                    GestureDetector(
-                      onTap: onToggleFavorite,
-                      child: Icon(isFavorite ? Icons.star : Icons.star_border, color: isFavorite ? const Color(0xFFFFAB00) : Colors.white54, size: 22),
-                    ),
+          gradient: match.isLive
+              ? LinearGradient(
+                  colors: [
+                    const Color(0xFF00E676).withAlpha(24),
+                    match.homeColor.withAlpha(16),
+                    const Color(0xFF00B0FF).withAlpha(20),
+                  ],
+                )
+              : LinearGradient(
+                  colors: [
+                    match.homeColor.withAlpha(14),
+                    Colors.transparent,
+                    match.awayColor.withAlpha(14),
                   ],
                 ),
-              ],
+        ),
+        child: Row(
+          children: [
+            // 1. Bal oldali státusz / perc / kezdési idő (Eredmények.com oszlop)
+            SizedBox(
+              width: 48,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (match.isLive) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(colors: [Color(0xFFFF1744), Color(0xFFFF5252)]),
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      child: const Text(
+                        'ÉLŐ',
+                        style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      match.status,
+                      style: const TextStyle(color: Color(0xFF00E676), fontSize: 11, fontWeight: FontWeight.w900),
+                      textAlign: TextAlign.center,
+                    ),
+                  ] else if (match.isFinished) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF00B0FF).withAlpha(32),
+                        borderRadius: BorderRadius.circular(5),
+                        border: Border.all(color: const Color(0xFF00B0FF).withAlpha(90)),
+                      ),
+                      child: Text(
+                        match.status,
+                        style: const TextStyle(color: Color(0xFF80D8FF), fontSize: 10, fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ] else ...[
+                    Text(
+                      match.status,
+                      style: const TextStyle(color: Colors.white70, fontSize: 11.5, fontWeight: FontWeight.w700),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ],
+              ),
             ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _teamBadge(match.homeTeam, match.homeColor, match.homeLogo),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(color: Colors.black38, borderRadius: BorderRadius.circular(14)),
-                  child: Text('${match.homeScore} - ${match.awayScore}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
+
+            // Színes elválasztó vonal a státusz és a csapatok között
+            Container(
+              width: 2.5,
+              height: 40,
+              margin: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(2),
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [match.homeColor, match.awayColor],
                 ),
-                _teamBadge(match.awayTeam, match.awayColor, match.awayLogo),
-              ],
+              ),
+            ),
+
+            // 2. Hazai és vendég csapat két sorban, logóval és színes jelzéssel
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _teamLine(
+                    name: match.homeTeam,
+                    color: match.homeColor,
+                    logoUrl: match.homeLogo,
+                    isWinning: homeWinning,
+                    isFinished: match.isFinished,
+                  ),
+                  const SizedBox(height: 6),
+                  _teamLine(
+                    name: match.awayTeam,
+                    color: match.awayColor,
+                    logoUrl: match.awayLogo,
+                    isWinning: awayWinning,
+                    isFinished: match.isFinished,
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(width: 8),
+
+            // 3. Jobb oldali eredmények (hazai és vendég gól külön sorban, Eredmények.com stílus)
+            SizedBox(
+              width: 30,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: match.isLive
+                          ? const Color(0xFF00E676).withAlpha(28)
+                          : (homeWinning ? match.homeColor.withAlpha(35) : Colors.transparent),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      showScore ? '${match.homeScore}' : '-',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w900,
+                        color: match.isLive
+                            ? const Color(0xFF00E676)
+                            : (homeWinning ? Colors.white : Colors.white70),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: match.isLive
+                          ? const Color(0xFF00B0FF).withAlpha(28)
+                          : (awayWinning ? match.awayColor.withAlpha(35) : Colors.transparent),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      showScore ? '${match.awayScore}' : '-',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w900,
+                        color: match.isLive
+                            ? const Color(0xFF00B0FF)
+                            : (awayWinning ? Colors.white : Colors.white70),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(width: 4),
+
+            // 4. Kedvenc csillag
+            GestureDetector(
+              onTap: onToggleFavorite,
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: Icon(
+                  isFavorite ? Icons.star : Icons.star_border,
+                  color: isFavorite ? const Color(0xFFFFAB00) : Colors.white38,
+                  size: 20,
+                ),
+              ),
             ),
           ],
         ),
@@ -845,16 +1237,36 @@ class MatchCard extends StatelessWidget {
     );
   }
 
-  Widget _teamBadge(String name, Color color, String? logoUrl) {
-    return SizedBox(
-      width: 100,
-      child: Column(
-        children: [
-          CachedTeamLogo(teamName: name, fallbackColor: color, logoUrl: logoUrl, radius: 22),
-          const SizedBox(height: 6),
-          Text(name, textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-        ],
-      ),
+  Widget _teamLine({
+    required String name,
+    required Color color,
+    required String? logoUrl,
+    required bool isWinning,
+    required bool isFinished,
+  }) {
+    final dimTeam = isFinished && !isWinning;
+    return Row(
+      children: [
+        CachedTeamLogo(
+          teamName: name,
+          fallbackColor: color,
+          logoUrl: logoUrl,
+          radius: 10,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: isWinning ? FontWeight.w800 : FontWeight.w600,
+              color: dimTeam ? Colors.white60 : Colors.white,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1081,18 +1493,26 @@ class FavoritesTab extends StatelessWidget {
                     child: Padding(
                       padding: EdgeInsets.all(24),
                       child: Text(
-                        'Még nincs kedvenc meccsed erre a napra.\nKoppints a csillag ikonra bármelyik meccskártyán!',
+                        'Még nincs kedvenc meccsed erre a napra.\nKoppints a csillag ikonra bármelyik meccsen!',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: Colors.white60, height: 1.5),
                       ),
                     ),
                   )
                 : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
                     itemCount: favMatches.length,
                     itemBuilder: (context, index) {
                       final match = favMatches[index];
-                      return MatchCard(match: match, isFavorite: true, onToggleFavorite: () => onToggleFavorite(match.id));
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF131D3B),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFFFFAB00).withAlpha(80)),
+                        ),
+                        child: MatchCard(match: match, isFavorite: true, onToggleFavorite: () => onToggleFavorite(match.id)),
+                      );
                     },
                   ),
           ),
