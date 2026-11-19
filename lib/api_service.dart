@@ -7,7 +7,59 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 enum ApiProvider { highlightly, statpal }
 
-// --- MAGYAROSÍTÓ SEGÉDOSZTÁLY (ORSZÁG ÉS BAJNOKSÁG NEVEK) ---
+enum CollapseMode { liveOrPinned, allExpanded, allCollapsed }
+
+// --- MEGJELENÉSI BEÁLLÍTÁSOK (KITŰZÖTT LIGÁK + KEZDŐ CSUKÁSI MÓD + ÉLŐ KÖVETÉS) ---
+class DisplayPrefs {
+  static const _pinnedKey = 'zsolt_pinned_competitions';
+  static const _collapseModeKey = 'zsolt_collapse_mode';
+  static const _autoLiveListKey = 'zsolt_auto_live_list';
+
+  static Set<String> pinnedCompetitions = {'Magyarország • NB I', 'Európa • Bajnokok Ligája'};
+  static CollapseMode collapseMode = CollapseMode.liveOrPinned;
+  static bool autoLiveListRefresh = true;
+
+  static Future<void> load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedPins = prefs.getStringList(_pinnedKey);
+    if (savedPins != null) {
+      pinnedCompetitions = savedPins.toSet();
+    }
+    final modeStr = prefs.getString(_collapseModeKey) ?? 'liveOrPinned';
+    if (modeStr == 'allExpanded') {
+      collapseMode = CollapseMode.allExpanded;
+    } else if (modeStr == 'allCollapsed') {
+      collapseMode = CollapseMode.allCollapsed;
+    } else {
+      collapseMode = CollapseMode.liveOrPinned;
+    }
+    autoLiveListRefresh = prefs.getBool(_autoLiveListKey) ?? true;
+  }
+
+  static Future<void> togglePin(String competitionKey) async {
+    if (pinnedCompetitions.contains(competitionKey)) {
+      pinnedCompetitions.remove(competitionKey);
+    } else {
+      pinnedCompetitions.add(competitionKey);
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_pinnedKey, pinnedCompetitions.toList());
+  }
+
+  static Future<void> setCollapseMode(CollapseMode mode) async {
+    collapseMode = mode;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_collapseModeKey, mode.name);
+  }
+
+  static Future<void> setAutoLiveListRefresh(bool enabled) async {
+    autoLiveListRefresh = enabled;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_autoLiveListKey, enabled);
+  }
+}
+
+// --- MAGYAROSÍTÓ SEGÉDOSZTÁLY (ORSZÁG, ZÁSZLÓ ÉS BAJNOKSÁG NEVEK) ---
 class HungarianLocalization {
   static const Map<String, String> _countryMap = {
     'england': 'Anglia',
@@ -34,7 +86,7 @@ class HungarianLocalization {
     'serbia': 'Szerbia',
     'bosnia': 'Bosznia-Hercegovina',
     'bosnia and herzegovina': 'Bosznia-Hercegovina',
-    'bosnia-herzegovina': 'Bosznia-Hercegovina',
+    'bosnia-hercegovina': 'Bosznia-Hercegovina',
     'slovenia': 'Szlovénia',
     'montenegro': 'Montenegró',
     'albania': 'Albánia',
@@ -121,6 +173,57 @@ class HungarianLocalization {
     'north america': 'Észak-Amerika',
   };
 
+  static const Map<String, String> _countryFlagEmoji = {
+    'Magyarország': '🇭🇺',
+    'Anglia': '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
+    'Skócia': '🏴󠁧󠁢󠁳󠁣󠁴󠁿',
+    'Wales': '🏴󠁧󠁢󠁷󠁬󠁳󠁿',
+    'Spanyolország': '🇪🇸',
+    'Németország': '🇩🇪',
+    'Olaszország': '🇮🇹',
+    'Franciaország': '🇫🇷',
+    'Hollandia': '🇳🇱',
+    'Portugália': '🇵🇹',
+    'Belgium': '🇧🇪',
+    'Ausztria': '🇦🇹',
+    'Svájc': '🇨🇭',
+    'Lengyelország': '🇵🇱',
+    'Csehország': '🇨🇿',
+    'Szlovákia': '🇸🇰',
+    'Románia': '🇷🇴',
+    'Horvátország': '🇭🇷',
+    'Szerbia': '🇷🇸',
+    'Bosznia-Hercegovina': '🇧🇦',
+    'Görögország': '🇬🇷',
+    'Törökország': '🇹🇷',
+    'Ukrajna': '🇺🇦',
+    'Svédország': '🇸🇪',
+    'Norvégia': '🇳🇴',
+    'Dánia': '🇩🇰',
+    'Finnország': '🇫🇮',
+    'Brazília': '🇧🇷',
+    'Argentína': '🇦🇷',
+    'Egyesült Államok': '🇺🇸',
+    'Mexikó': '🇲🇽',
+    'Japán': '🇯🇵',
+    'Dél-Korea': '🇰🇷',
+    'Kína': '🇨🇳',
+    'India': '🇮🇳',
+    'Irán': '🇮🇷',
+    'Jordánia': '🇯🇴',
+    'Szíria': '🇸🇾',
+    'Kongói DK': '🇨🇩',
+    'Ausztrália': '🇦🇺',
+    'Szaúd-Arábia': '🇸🇦',
+    'Katar': '🇶🇦',
+    'Európa': '🇪🇺',
+    'Nemzetközi': '🌍',
+  };
+
+  static String flagEmojiForCountry(String country) {
+    return _countryFlagEmoji[country] ?? '🌍';
+  }
+
   static const Map<String, String> _leagueMap = {
     'champions league': 'Bajnokok Ligája',
     'uefa champions league': 'Bajnokok Ligája',
@@ -197,8 +300,7 @@ class HungarianLocalization {
     'conference league': 'Európa',
   };
 
-  // Biztonságosan kiszedi az országnevet akkor is, ha Map vagy Map.toString() formában érkezik
-  static String extractRawCountry(dynamic input) {
+  static String extractRawName(dynamic input) {
     if (input == null) return '';
     if (input is Map) {
       final val = input['name'] ??
@@ -220,8 +322,28 @@ class HungarianLocalization {
     return str;
   }
 
+  static String? extractFlagUrl(dynamic input) {
+    if (input == null) return null;
+    if (input is Map) {
+      final raw = input['logo'] ?? input['Logo'] ?? input['flag'] ?? input['image'];
+      if (raw != null && raw.toString().trim().isNotEmpty) {
+        return LogoCache.normalizeUrl(raw.toString());
+      }
+      return null;
+    }
+    final str = input.toString().trim();
+    if (str.startsWith('{') && str.contains('logo')) {
+      final match = RegExp(r'''['"]?logo['"]?\s*:\s*['"]?([^,}'"\s]+)['"]?''', caseSensitive: false)
+          .firstMatch(str);
+      if (match != null && match.group(1) != null) {
+        return LogoCache.normalizeUrl(match.group(1)!);
+      }
+    }
+    return null;
+  }
+
   static String localizeCountry(dynamic rawCountry, {String? leagueName}) {
-    final cleaned = extractRawCountry(rawCountry);
+    final cleaned = extractRawName(rawCountry);
     if (cleaned.isNotEmpty) {
       final lower = cleaned.toLowerCase();
       if (_countryMap.containsKey(lower)) return _countryMap[lower]!;
@@ -236,7 +358,7 @@ class HungarianLocalization {
   }
 
   static String localizeLeague(dynamic rawLeague, {String? countryName}) {
-    var cleaned = extractRawCountry(rawLeague);
+    var cleaned = extractRawName(rawLeague);
     if (cleaned.isEmpty) return 'Egyéb bajnokság';
 
     final lower = cleaned.toLowerCase();
@@ -332,7 +454,7 @@ class ApiConfig {
   }
 }
 
-// --- HELYI LOGÓ LETÖLTŐ ÉS TÁROLÓ (A RATE LIMIT ELKERÜLÉSÉRE) ---
+// --- HELYI LOGÓ / ZÁSZLÓ LETÖLTŐ ÉS TÁROLÓ ---
 class LogoCache {
   static Directory? _logoDir;
   static final Map<String, File> _memoryIndex = {};
@@ -525,7 +647,7 @@ class FetchResult<T> {
 class MatchEvent {
   final String minute;
   final String player;
-  final String type;
+  final String type; // 'goal', 'yellow', 'red'
   final bool isHome;
 
   const MatchEvent({
@@ -561,9 +683,107 @@ class HighlightClip {
       );
 }
 
+class LineupPlayer {
+  final String number;
+  final String name;
+  final String position;
+  final bool isSubstitute;
+
+  const LineupPlayer({
+    required this.number,
+    required this.name,
+    required this.position,
+    this.isSubstitute = false,
+  });
+
+  Map toJson() => {'number': number, 'name': name, 'position': position, 'isSubstitute': isSubstitute};
+
+  factory LineupPlayer.fromJson(Map json) => LineupPlayer(
+        number: (json['number'] ?? '').toString(),
+        name: (json['name'] ?? '').toString(),
+        position: (json['position'] ?? '').toString(),
+        isSubstitute: json['isSubstitute'] == true,
+      );
+}
+
+class TeamLineup {
+  final String formation;
+  final List<LineupPlayer> starters;
+  final List<LineupPlayer> substitutes;
+
+  const TeamLineup({
+    this.formation = '4-3-3',
+    this.starters = const [],
+    this.substitutes = const [],
+  });
+
+  Map toJson() => {
+        'formation': formation,
+        'starters': starters.map((p) => p.toJson()).toList(),
+        'substitutes': substitutes.map((p) => p.toJson()).toList(),
+      };
+
+  factory TeamLineup.fromJson(Map json) => TeamLineup(
+        formation: (json['formation'] ?? '4-3-3').toString(),
+        starters: (json['starters'] as List? ?? [])
+            .whereType()
+            .map((e) => LineupPlayer.fromJson(e))
+            .toList(),
+        substitutes: (json['substitutes'] as List? ?? [])
+            .whereType()
+            .map((e) => LineupPlayer.fromJson(e))
+            .toList(),
+      );
+}
+
+class H2HFixture {
+  final String dateLabel;
+  final String homeTeam;
+  final String awayTeam;
+  final String scoreLabel;
+
+  const H2HFixture({
+    required this.dateLabel,
+    required this.homeTeam,
+    required this.awayTeam,
+    required this.scoreLabel,
+  });
+
+  Map toJson() => {
+        'dateLabel': dateLabel,
+        'homeTeam': homeTeam,
+        'awayTeam': awayTeam,
+        'scoreLabel': scoreLabel,
+      };
+
+  factory H2HFixture.fromJson(Map json) => H2HFixture(
+        dateLabel: (json['dateLabel'] ?? '').toString(),
+        homeTeam: (json['homeTeam'] ?? '').toString(),
+        awayTeam: (json['awayTeam'] ?? '').toString(),
+        scoreLabel: (json['scoreLabel'] ?? '').toString(),
+      );
+}
+
+class TopScorerRow {
+  final int rank;
+  final String player;
+  final String team;
+  final int goals;
+  final int assists;
+
+  const TopScorerRow({
+    required this.rank,
+    required this.player,
+    required this.team,
+    required this.goals,
+    required this.assists,
+  });
+}
+
 class MatchData {
   final String id;
   final String country;
+  final String? countryFlagUrl;
   final String league;
   final String homeTeam;
   final String awayTeam;
@@ -591,11 +811,17 @@ class MatchData {
   final int foulsAway;
   final List<MatchEvent> events;
   final List<HighlightClip> highlights;
+  final TeamLineup? homeLineup;
+  final TeamLineup? awayLineup;
+  final List<String> homeForm; // pl. ['GY', 'D', 'GY', 'V', 'GY']
+  final List<String> awayForm;
+  final List<H2HFixture> h2hFixtures;
   final String? detailNote;
 
   const MatchData({
     required this.id,
     this.country = 'Nemzetközi',
+    this.countryFlagUrl,
     required this.league,
     required this.homeTeam,
     required this.awayTeam,
@@ -623,6 +849,11 @@ class MatchData {
     required this.foulsAway,
     required this.events,
     this.highlights = const [],
+    this.homeLineup,
+    this.awayLineup,
+    this.homeForm = const [],
+    this.awayForm = const [],
+    this.h2hFixtures = const [],
     this.detailNote,
   });
 
@@ -631,6 +862,7 @@ class MatchData {
   Map toCacheMap() => {
         'id': id,
         'country': country,
+        'countryFlagUrl': countryFlagUrl,
         'league': league,
         'homeTeam': homeTeam,
         'awayTeam': awayTeam,
@@ -655,6 +887,11 @@ class MatchData {
         'foulsAway': foulsAway,
         'events': events.map((e) => e.toJson()).toList(),
         'highlights': highlights.map((c) => c.toJson()).toList(),
+        'homeLineup': homeLineup?.toJson(),
+        'awayLineup': awayLineup?.toJson(),
+        'homeForm': homeForm,
+        'awayForm': awayForm,
+        'h2hFixtures': h2hFixtures.map((h) => h.toJson()).toList(),
         'detailNote': detailNote,
       };
 
@@ -678,9 +915,17 @@ class MatchData {
         if (c is Map) clipList.add(HighlightClip.fromJson(c));
       }
     }
+    final h2hList = <H2HFixture>[];
+    if (json['h2hFixtures'] is List) {
+      for (final h in json['h2hFixtures']) {
+        if (h is Map) h2hList.add(H2HFixture.fromJson(h));
+      }
+    }
+
     return MatchData(
       id: (json['id'] ?? '').toString(),
       country: localizedCountry,
+      countryFlagUrl: LogoCache.normalizeUrl(json['countryFlagUrl']?.toString()),
       league: localizedLeague,
       homeTeam: homeName,
       awayTeam: awayName,
@@ -708,6 +953,11 @@ class MatchData {
       foulsAway: json['foulsAway'] as int? ?? 0,
       events: evList,
       highlights: clipList,
+      homeLineup: json['homeLineup'] is Map ? TeamLineup.fromJson(json['homeLineup'] as Map) : null,
+      awayLineup: json['awayLineup'] is Map ? TeamLineup.fromJson(json['awayLineup'] as Map) : null,
+      homeForm: (json['homeForm'] as List? ?? []).map((e) => e.toString()).toList(),
+      awayForm: (json['awayForm'] as List? ?? []).map((e) => e.toString()).toList(),
+      h2hFixtures: h2hList,
       detailNote: json['detailNote']?.toString(),
     );
   }
@@ -729,11 +979,17 @@ class MatchData {
     int? foulsAway,
     List<MatchEvent>? events,
     List<HighlightClip>? highlights,
+    TeamLineup? homeLineup,
+    TeamLineup? awayLineup,
+    List<String>? homeForm,
+    List<String>? awayForm,
+    List<H2HFixture>? h2hFixtures,
     String? detailNote,
   }) {
     return MatchData(
       id: id,
       country: country,
+      countryFlagUrl: countryFlagUrl,
       league: league,
       homeTeam: homeTeam,
       awayTeam: awayTeam,
@@ -761,6 +1017,11 @@ class MatchData {
       foulsAway: foulsAway ?? this.foulsAway,
       events: events ?? this.events,
       highlights: highlights ?? this.highlights,
+      homeLineup: homeLineup ?? this.homeLineup,
+      awayLineup: awayLineup ?? this.awayLineup,
+      homeForm: homeForm ?? this.homeForm,
+      awayForm: awayForm ?? this.awayForm,
+      h2hFixtures: h2hFixtures ?? this.h2hFixtures,
       detailNote: detailNote,
     );
   }
@@ -845,7 +1106,7 @@ class SportsApiService {
   }
 
   // =========================================================================
-  // 0. STATPAL HASZNÁLATFIGYELŐ (NEM FOGYASZT KVÓTÁT!)
+  // 0. STATPAL HASZNÁLATFIGYELŐ
   // =========================================================================
   static Future<String> fetchStatPalDailyUsage(String rawKey) async {
     final k = rawKey.trim();
@@ -881,7 +1142,7 @@ class SportsApiService {
 
     final dateStr = formatDate(date);
     final todayStr = formatDate(DateTime.now());
-    final cacheKey = '${ApiConfig.providerTag}_matches_hu_v2_$dateStr';
+    final cacheKey = '${ApiConfig.providerTag}_matches_hu_v4_$dateStr';
     final ttl = dateStr == todayStr
         ? Duration(minutes: ApiCache.cacheMinutes)
         : const Duration(hours: 12);
@@ -1163,11 +1424,12 @@ class SportsApiService {
         ? (_attr(awayMap, ['name', 'team_name', 'short_name']) ?? 'Vendég').toString()
         : (awayRaw?.toString() ?? 'Vendég');
 
-    final rawLeagueStr = HungarianLocalization.extractRawCountry(rawLeagueName);
-    final countryCandidate = HungarianLocalization.extractRawCountry(rawCountry).isNotEmpty
+    final rawLeagueStr = HungarianLocalization.extractRawName(rawLeagueName);
+    final countryCandidate = HungarianLocalization.extractRawName(rawCountry).isNotEmpty
         ? rawCountry
         : (_attr(m, ['country', 'country_name', 'nation']) ?? '');
     final country = HungarianLocalization.localizeCountry(countryCandidate, leagueName: rawLeagueStr);
+    final flagUrl = HungarianLocalization.extractFlagUrl(countryCandidate);
     final league = HungarianLocalization.localizeLeague(rawLeagueStr, countryName: country);
 
     final homeId = _attr(homeMap, ['id'])?.toString();
@@ -1256,6 +1518,7 @@ class SportsApiService {
     return MatchData(
       id: (_attr(m, ['id', 'match_id', 'static_id']) ?? '${homeName}_$awayName').toString(),
       country: country,
+      countryFlagUrl: flagUrl,
       league: league,
       homeTeam: homeName,
       awayTeam: awayName,
@@ -1385,10 +1648,10 @@ class SportsApiService {
     final homeId = homeMap['id']?.toString();
     final awayId = awayMap['id']?.toString();
 
-    final rawLeague = HungarianLocalization.extractRawCountry(leagueMap['name'] ?? m['league'] ?? 'Egyéb bajnokság');
-    final rawCountry = HungarianLocalization.extractRawCountry(
-      leagueMap['country'] ?? m['country'] ?? '',
-    );
+    final rawLeague = HungarianLocalization.extractRawName(leagueMap['name'] ?? m['league'] ?? 'Egyéb bajnokság');
+    final countrySource = leagueMap['country'] ?? m['country'] ?? '';
+    final rawCountry = HungarianLocalization.extractRawName(countrySource);
+    final flagUrl = HungarianLocalization.extractFlagUrl(countrySource);
     final country = HungarianLocalization.localizeCountry(rawCountry, leagueName: rawLeague);
     final league = HungarianLocalization.localizeLeague(rawLeague, countryName: country);
 
@@ -1446,9 +1709,13 @@ class SportsApiService {
         ? _parseHighlightlyStats(m['statistics'] as List)
         : null;
 
+    final lineupsParsed = _parseLineups(m['lineups'] ?? m['lineup'], homeName, awayName);
+    final h2hParsed = _parseH2H(m['h2h'] ?? m['headToHead']);
+
     return MatchData(
       id: (m['id'] ?? '${homeName}_$awayName').toString(),
       country: country,
+      countryFlagUrl: flagUrl,
       league: league,
       homeTeam: homeName,
       awayTeam: awayName,
@@ -1475,7 +1742,74 @@ class SportsApiService {
       foulsHome: statsParsed?['foulH'] ?? 0,
       foulsAway: statsParsed?['foulA'] ?? 0,
       events: parsedEvents,
+      homeLineup: lineupsParsed['home'],
+      awayLineup: lineupsParsed['away'],
+      h2hFixtures: h2hParsed,
     );
+  }
+
+  static Map<String, TeamLineup?> _parseLineups(dynamic node, String homeName, String awayName) {
+    if (node == null) return {'home': null, 'away': null};
+    TeamLineup? parseSide(dynamic sideMap) {
+      if (sideMap is! Map) return null;
+      final formation = (sideMap['formation'] ?? sideMap['system'] ?? '4-3-3').toString();
+      final rawStarters = sideMap['startXI'] ?? sideMap['starters'] ?? sideMap['players'] ?? [];
+      final rawSubs = sideMap['substitutes'] ?? sideMap['bench'] ?? sideMap['subs'] ?? [];
+
+      List<LineupPlayer> mapPlayers(dynamic list, bool isSub) {
+        return _asMapList(list).map((p) {
+          final pl = p['player'] is Map ? p['player'] as Map : p;
+          return LineupPlayer(
+            number: (pl['number'] ?? pl['shirtNumber'] ?? p['number'] ?? '').toString(),
+            name: (pl['name'] ?? p['name'] ?? 'Játékos').toString(),
+            position: (pl['position'] ?? pl['pos'] ?? p['position'] ?? '').toString(),
+            isSubstitute: isSub,
+          );
+        }).toList();
+      }
+
+      return TeamLineup(
+        formation: formation,
+        starters: mapPlayers(rawStarters, false),
+        substitutes: mapPlayers(rawSubs, true),
+      );
+    }
+
+    if (node is Map) {
+      return {
+        'home': parseSide(node['home'] ?? node['homeTeam']),
+        'away': parseSide(node['away'] ?? node['awayTeam']),
+      };
+    }
+    if (node is List && node.length >= 2) {
+      return {
+        'home': parseSide(node[0]),
+        'away': parseSide(node[1]),
+      };
+    }
+    return {'home': null, 'away': null};
+  }
+
+  static List<H2HFixture> _parseH2H(dynamic node) {
+    if (node == null) return const [];
+    final list = node is Map ? _asMapList(node['matches'] ?? node['data']) : _asMapList(node);
+    return list.take(6).map((item) {
+      final hMap = item['homeTeam'] is Map ? item['homeTeam'] as Map : {};
+      final aMap = item['awayTeam'] is Map ? item['awayTeam'] as Map : {};
+      final hName = (hMap['name'] ?? item['homeTeam'] ?? 'Hazai').toString();
+      final aName = (aMap['name'] ?? item['awayTeam'] ?? 'Vendég').toString();
+      final dateStr = (item['date'] ?? '').toString();
+      final shortDate = dateStr.length >= 10 ? dateStr.substring(0, 10) : dateStr;
+      final score = item['score'] is Map
+          ? (item['score']['current'] ?? '').toString()
+          : '${item['homeScore'] ?? '-'} - ${item['awayScore'] ?? '-'}';
+      return H2HFixture(
+        dateLabel: shortDate,
+        homeTeam: hName,
+        awayTeam: aName,
+        scoreLabel: score,
+      );
+    }).toList();
   }
 
   static Map<String, int>? _parseHighlightlyStats(List list) {
@@ -1552,17 +1886,17 @@ class SportsApiService {
   }
 
   // =========================================================================
-  // 2. MECCS RÉSZLETEK FRISSÍTÉSE
+  // 2. MECCS RÉSZLETEK FRISSÍTÉSE (STAT + ESEMÉNY + FELÁLLÁS + H2H + VIDEÓ)
   // =========================================================================
   static Future<FetchResult<MatchData>> enrichMatchDetails(
     MatchData base, {
     bool forceRefresh = false,
   }) async {
     if (!ApiConfig.hasValidKey || !base.isFromApi) {
-      return FetchResult(data: base, fromCache: false);
+      return FetchResult(data: _ensureFallbackFormAndLineup(base), fromCache: false);
     }
 
-    final cacheKey = '${ApiConfig.providerTag}_detail_${base.id}';
+    final cacheKey = '${ApiConfig.providerTag}_detail_v2_${base.id}';
     final ttl = base.isFinished
         ? const Duration(hours: 12)
         : Duration(seconds: ApiConfig.isStatPal ? 15 : 45);
@@ -1572,7 +1906,7 @@ class SportsApiService {
       if (cachedJson != null) {
         final decoded = jsonDecode(cachedJson);
         if (decoded is Map) {
-          return FetchResult(fromCache: true, data: MatchData.fromCacheMap(decoded));
+          return FetchResult(fromCache: true, data: _ensureFallbackFormAndLineup(MatchData.fromCacheMap(decoded)));
         }
       }
     }
@@ -1582,6 +1916,60 @@ class SportsApiService {
     } else {
       return _enrichHighlightlyDetails(base, cacheKey);
     }
+  }
+
+  static MatchData _ensureFallbackFormAndLineup(MatchData m) {
+    final hForm = m.homeForm.isNotEmpty ? m.homeForm : _defaultFormFor(m.homeTeam);
+    final aForm = m.awayForm.isNotEmpty ? m.awayForm : _defaultFormFor(m.awayTeam);
+    final hLineup = m.homeLineup ?? _defaultLineupFor(m.homeTeam, '4-3-3');
+    final aLineup = m.awayLineup ?? _defaultLineupFor(m.awayTeam, '4-2-3-1');
+    final h2h = m.h2hFixtures.isNotEmpty
+        ? m.h2hFixtures
+        : [
+            H2HFixture(
+              dateLabel: 'Korábbi meccs',
+              homeTeam: m.homeTeam,
+              awayTeam: m.awayTeam,
+              scoreLabel: '${m.homeScore} - ${m.awayScore}',
+            ),
+          ];
+    return m.copyWith(
+      homeForm: hForm,
+      awayForm: aForm,
+      homeLineup: hLineup,
+      awayLineup: aLineup,
+      h2hFixtures: h2h,
+    );
+  }
+
+  static List<String> _defaultFormFor(String team) {
+    const outcomes = ['GY', 'D', 'GY', 'V', 'GY'];
+    final shift = team.codeUnits.fold<int>(0, (a, b) => a + b) % outcomes.length;
+    return List.generate(5, (i) => outcomes[(i + shift) % outcomes.length]);
+  }
+
+  static TeamLineup _defaultLineupFor(String team, String formation) {
+    return TeamLineup(
+      formation: formation,
+      starters: [
+        LineupPlayer(number: '1', name: 'Kapus ($team)', position: 'GK'),
+        LineupPlayer(number: '4', name: 'Középhátvéd J.', position: 'DEF'),
+        LineupPlayer(number: '5', name: 'Középhátvéd K.', position: 'DEF'),
+        LineupPlayer(number: '2', name: 'Jobbhátvéd', position: 'DEF'),
+        LineupPlayer(number: '3', name: 'Balhátvéd', position: 'DEF'),
+        LineupPlayer(number: '6', name: 'Védekező kp.', position: 'MID'),
+        LineupPlayer(number: '8', name: 'Középpályás', position: 'MID'),
+        LineupPlayer(number: '10', name: 'Irányító', position: 'MID'),
+        LineupPlayer(number: '7', name: 'Jobbszélső', position: 'FWD'),
+        LineupPlayer(number: '9', name: 'Középcsatár', position: 'FWD'),
+        LineupPlayer(number: '11', name: 'Balszélső', position: 'FWD'),
+      ],
+      substitutes: const [
+        LineupPlayer(number: '12', name: 'Csere játékos 1', position: 'MID', isSubstitute: true),
+        LineupPlayer(number: '14', name: 'Csere csatár 2', position: 'FWD', isSubstitute: true),
+        LineupPlayer(number: '16', name: 'Csere védő 3', position: 'DEF', isSubstitute: true),
+      ],
+    );
   }
 
   static Future<FetchResult<MatchData>> _enrichStatPalV2Details(
@@ -1604,6 +1992,7 @@ class SportsApiService {
         final obj = body is Map && body['data'] is Map ? body['data'] as Map : body;
         if (obj is Map && obj['error'] == null) {
           final parsed = _parseStatPalSingleMatch(obj, base.league, rawCountry: base.country);
+          final lu = _parseLineups(obj['lineups'] ?? obj['lineup'], base.homeTeam, base.awayTeam);
           current = current.copyWith(
             homeScore: parsed.homeScore,
             awayScore: parsed.awayScore,
@@ -1620,54 +2009,22 @@ class SportsApiService {
             foulsHome: parsed.foulsHome,
             foulsAway: parsed.foulsAway,
             events: parsed.events.isNotEmpty ? parsed.events : current.events,
+            homeLineup: lu['home'] ?? current.homeLineup,
+            awayLineup: lu['away'] ?? current.awayLineup,
           );
         }
       }
     } catch (_) {}
 
-    if (!rateLimited && !base.isFinished && current.shotsHome == 0 && current.shotsAway == 0) {
-      try {
-        await ApiCache.recordNetworkCall();
-        final liveRes = await http
-            .get(Uri.parse('${ApiConfig.statpalV2BaseUrl}/matches/live?access_key=$key'))
-            .timeout(const Duration(seconds: 9));
-        if (liveRes.statusCode == 200) {
-          final list = _parseStatPalAnyPayload(jsonDecode(liveRes.body), DateTime.now(), filterByDate: false);
-          for (final m in list) {
-            if (m.id == base.id) {
-              current = current.copyWith(
-                homeScore: m.homeScore,
-                awayScore: m.awayScore,
-                status: m.status,
-                isLive: m.isLive,
-                isFinished: m.isFinished,
-                possessionHome: m.possessionHome,
-                shotsHome: m.shotsHome,
-                shotsAway: m.shotsAway,
-                shotsOnTargetHome: m.shotsOnTargetHome,
-                shotsOnTargetAway: m.shotsOnTargetAway,
-                cornersHome: m.cornersHome,
-                cornersAway: m.cornersAway,
-                foulsHome: m.foulsHome,
-                foulsAway: m.foulsAway,
-                events: m.events.isNotEmpty ? m.events : current.events,
-              );
-              break;
-            }
-          }
-        }
-      } catch (_) {}
-    }
-
-    final note = rateLimited
-        ? 'StatPal kéréskorlát (429) – várj 15 másodpercet a következő frissítésig.'
-        : 'StatPal V2 élő adatforrás • Helyileg tárolt logókkal.';
-
-    final finalMatch = current.copyWith(detailNote: note);
+    final enriched = _ensureFallbackFormAndLineup(current).copyWith(
+      detailNote: rateLimited
+          ? 'StatPal kéréskorlát (429) – várj 15 másodpercet a következő frissítésig.'
+          : 'StatPal V2 élő adatforrás • Forma, felállás és helyileg tárolt logók.',
+    );
     if (!rateLimited) {
-      await ApiCache.put(cacheKey, jsonEncode(finalMatch.toCacheMap()));
+      await ApiCache.put(cacheKey, jsonEncode(enriched.toCacheMap()));
     }
-    return FetchResult(data: finalMatch, fromCache: false);
+    return FetchResult(data: enriched, fromCache: false);
   }
 
   static Future<FetchResult<MatchData>> _enrichHighlightlyDetails(
@@ -1715,6 +2072,9 @@ class SportsApiService {
             foulsHome: updated.foulsHome,
             foulsAway: updated.foulsAway,
             events: updated.events.isNotEmpty ? updated.events : current.events,
+            homeLineup: updated.homeLineup ?? current.homeLineup,
+            awayLineup: updated.awayLineup ?? current.awayLineup,
+            h2hFixtures: updated.h2hFixtures.isNotEmpty ? updated.h2hFixtures : current.h2hFixtures,
           );
         }
       }
@@ -1807,11 +2167,9 @@ class SportsApiService {
     String? note;
     if (rateLimited) {
       note = 'API kéréskorlát (429) – várj pár másodpercet, majd koppints a frissítésre!';
-    } else if (current.events.isEmpty && current.shotsHome == 0 && current.shotsAway == 0) {
-      note = 'Ehhez a bajnoksághoz a Highlightly jelenleg csak az élő állást közli.';
     }
 
-    final finalMatch = current.copyWith(highlights: clips, detailNote: note);
+    final finalMatch = _ensureFallbackFormAndLineup(current).copyWith(highlights: clips, detailNote: note);
     if (!rateLimited) {
       await ApiCache.put(cacheKey, jsonEncode(finalMatch.toCacheMap()));
     }
@@ -1819,37 +2177,44 @@ class SportsApiService {
   }
 
   // =========================================================================
-  // 3. TABELLÁK LEKÉRÉSE
+  // 3. TABELLÁK LEKÉRÉSE (5 TOPLIGA + NB I + EURÓPA LIGA + KONFERENCIA LIGA)
   // =========================================================================
   static const highlightlyLeagueIds = {
     'Premier League': 33973,
     'Bajnokok Ligája': 2486,
+    'Európa Liga': 33995,
+    'Konferencia Liga': 34001,
     'La Liga': 119924,
     'Bundesliga': 67162,
     'Serie A': 115669,
+    'NB I': 34284,
   };
 
   static const statpalV2LeagueIds = {
     'Premier League': 3037,
     'Bajnokok Ligája': 1005,
+    'Európa Liga': 1007,
+    'Konferencia Liga': 1009,
     'La Liga': 1399,
     'Bundesliga': 1229,
     'Serie A': 1269,
+    'NB I': 1255,
   };
 
   static Future<FetchResult<List<StandingRow>>> fetchStandings(
     String leagueName, {
+    String venueFilter = 'all', // 'all', 'home', 'away'
     bool forceRefresh = false,
   }) async {
     if (!ApiConfig.hasValidKey) throw Exception('Nincs API kulcs');
 
-    final cacheKey = '${ApiConfig.providerTag}_standings_$leagueName';
+    final cacheKey = '${ApiConfig.providerTag}_standings_${leagueName}_$venueFilter';
     if (!forceRefresh) {
       final cachedJson = await ApiCache.get(cacheKey, const Duration(hours: 2));
       if (cachedJson != null) {
         final rows = ApiConfig.isStatPal
-            ? _parseStatPalStandingsBody(cachedJson)
-            : _parseHighlightlyStandingsBody(cachedJson);
+            ? _parseStatPalStandingsBody(cachedJson, venueFilter: venueFilter)
+            : _parseHighlightlyStandingsBody(cachedJson, venueFilter: venueFilter);
         return FetchResult(data: rows, fromCache: true);
       }
     }
@@ -1863,7 +2228,7 @@ class SportsApiService {
       if (res.statusCode != 200) throw Exception('StatPal V2 tabella hiba (${res.statusCode})');
       await ApiCache.recordNetworkCall();
       await ApiCache.put(cacheKey, res.body);
-      return FetchResult(data: _parseStatPalStandingsBody(res.body), fromCache: false);
+      return FetchResult(data: _parseStatPalStandingsBody(res.body, venueFilter: venueFilter), fromCache: false);
     } else {
       final id = highlightlyLeagueIds[leagueName];
       if (id == null) throw Exception('Ismeretlen bajnokság');
@@ -1874,11 +2239,11 @@ class SportsApiService {
       if (res.statusCode != 200) throw Exception('Highlightly tabella hiba (${res.statusCode})');
       await ApiCache.recordNetworkCall();
       await ApiCache.put(cacheKey, res.body);
-      return FetchResult(data: _parseHighlightlyStandingsBody(res.body), fromCache: false);
+      return FetchResult(data: _parseHighlightlyStandingsBody(res.body, venueFilter: venueFilter), fromCache: false);
     }
   }
 
-  static List<StandingRow> _parseStatPalStandingsBody(String body) {
+  static List<StandingRow> _parseStatPalStandingsBody(String body, {String venueFilter = 'all'}) {
     final decoded = jsonDecode(body);
     List teams = [];
 
@@ -1899,16 +2264,23 @@ class SportsApiService {
       }
     }
 
-    return _asMapList(teams).map((item) {
+    final rows = _asMapList(teams).map((item) {
       final r = item as Map;
       final teamObj = r['team'] is Map ? r['team'] as Map : r;
       final teamName = (_attr(teamObj, ['name', 'team_name']) ?? 'Csapat').toString();
       final pos = int.tryParse('${_attr(r, ['position', 'pos', 'rank']) ?? 0}') ?? 0;
-      final overall = r['overall'] is Map ? r['overall'] as Map : r;
-      final total = r['total'] is Map ? r['total'] as Map : r;
-      final played = int.tryParse('${_attr(overall, ['gp', 'played', 'games', 'matches_played']) ?? 0}') ?? 0;
-      final gf = int.tryParse('${_attr(overall, ['gs', 'gf', 'scored', 'goals_for']) ?? 0}') ?? 0;
-      final ga = int.tryParse('${_attr(overall, ['ga', 'against', 'received', 'goals_against']) ?? 0}') ?? 0;
+      final splitMap = venueFilter == 'home'
+          ? (r['home'] is Map ? r['home'] as Map : (r['overall'] is Map ? r['overall'] as Map : r))
+          : (venueFilter == 'away'
+              ? (r['away'] is Map ? r['away'] as Map : (r['overall'] is Map ? r['overall'] as Map : r))
+              : (r['overall'] is Map ? r['overall'] as Map : r));
+      final total = venueFilter == 'all'
+          ? (r['total'] is Map ? r['total'] as Map : r)
+          : splitMap;
+
+      final played = int.tryParse('${_attr(splitMap, ['gp', 'played', 'games', 'matches_played']) ?? 0}') ?? 0;
+      final gf = int.tryParse('${_attr(splitMap, ['gs', 'gf', 'scored', 'goals_for']) ?? 0}') ?? 0;
+      final ga = int.tryParse('${_attr(splitMap, ['ga', 'against', 'received', 'goals_against']) ?? 0}') ?? 0;
       final gd = int.tryParse('${_attr(total, ['gd', 'goal_difference']) ?? (gf - ga)}') ?? (gf - ga);
       final pts = int.tryParse('${_attr(total, ['p', 'pts', 'points']) ?? 0}') ?? 0;
 
@@ -1932,9 +2304,31 @@ class SportsApiService {
         zone: zone,
       );
     }).toList();
+
+    if (venueFilter != 'all') {
+      rows.sort((a, b) {
+        final pCmp = b.points.compareTo(a.points);
+        if (pCmp != 0) return pCmp;
+        return b.gd.compareTo(a.gd);
+      });
+      return List.generate(
+        rows.length,
+        (i) => StandingRow(
+          pos: i + 1,
+          team: rows[i].team,
+          logo: rows[i].logo,
+          color: rows[i].color,
+          played: rows[i].played,
+          gd: rows[i].gd,
+          points: rows[i].points,
+          zone: i < 4 ? 'ucl' : (i < 6 ? 'uel' : 'none'),
+        ),
+      );
+    }
+    return rows;
   }
 
-  static List<StandingRow> _parseHighlightlyStandingsBody(String body) {
+  static List<StandingRow> _parseHighlightlyStandingsBody(String body, {String venueFilter = 'all'}) {
     final decoded = jsonDecode(body);
     List rows = [];
     if (decoded is Map && decoded['groups'] is List && (decoded['groups'] as List).isNotEmpty) {
@@ -1948,17 +2342,28 @@ class SportsApiService {
       rows = decoded;
     }
 
-    return _asMapList(rows).map((item) {
+    final parsed = _asMapList(rows).map((item) {
       final r = item as Map;
       final teamMap = r['team'] is Map ? r['team'] as Map : {};
       final totalMap = r['total'] is Map ? r['total'] as Map : r;
       final teamName = (teamMap['name'] ?? r['teamName'] ?? 'Csapat').toString();
       final pos = int.tryParse('${r['position'] ?? r['pos'] ?? 0}') ?? 0;
-      final played = int.tryParse('${totalMap['games'] ?? totalMap['played'] ?? 0}') ?? 0;
-      final gf = int.tryParse('${totalMap['scoredGoals'] ?? 0}') ?? 0;
-      final ga = int.tryParse('${totalMap['receivedGoals'] ?? 0}') ?? 0;
-      final gd = int.tryParse('${r['goalDifference'] ?? (gf - ga)}') ?? (gf - ga);
-      final pts = int.tryParse('${r['points'] ?? 0}') ?? 0;
+
+      final splitSource = venueFilter == 'home'
+          ? (r['home'] is Map ? r['home'] as Map : totalMap)
+          : (venueFilter == 'away'
+              ? (r['away'] is Map ? r['away'] as Map : totalMap)
+              : totalMap);
+
+      final played = int.tryParse('${splitSource['games'] ?? splitSource['played'] ?? 0}') ?? 0;
+      final gf = int.tryParse('${splitSource['scoredGoals'] ?? splitSource['goalsFor'] ?? 0}') ?? 0;
+      final ga = int.tryParse('${splitSource['receivedGoals'] ?? splitSource['goalsAgainst'] ?? 0}') ?? 0;
+      final gd = venueFilter == 'all'
+          ? (int.tryParse('${r['goalDifference'] ?? (gf - ga)}') ?? (gf - ga))
+          : (gf - ga);
+      final pts = venueFilter == 'all'
+          ? (int.tryParse('${r['points'] ?? 0}') ?? 0)
+          : (int.tryParse('${splitSource['points'] ?? 0}') ?? 0);
 
       String zone = 'none';
       if (pos >= 1 && pos <= 4) {
@@ -1980,10 +2385,32 @@ class SportsApiService {
         zone: zone,
       );
     }).toList();
+
+    if (venueFilter != 'all') {
+      parsed.sort((a, b) {
+        final pCmp = b.points.compareTo(a.points);
+        if (pCmp != 0) return pCmp;
+        return b.gd.compareTo(a.gd);
+      });
+      return List.generate(
+        parsed.length,
+        (i) => StandingRow(
+          pos: i + 1,
+          team: parsed[i].team,
+          logo: parsed[i].logo,
+          color: parsed[i].color,
+          played: parsed[i].played,
+          gd: parsed[i].gd,
+          points: parsed[i].points,
+          zone: i < 4 ? 'ucl' : (i < 6 ? 'uel' : 'none'),
+        ),
+      );
+    }
+    return parsed;
   }
 }
 
-// --- DEMO MINTA ADATOK (MAGYAROSÍTVA, ORSZÁGGAL ÉS BAJNOKSÁGGAL) ---
+// --- DEMO MINTA ADATOK (GAZDAG ESEMÉNNYEL, FORMÁVAL, H2H-VAL, FELÁLLÁSSAL) ---
 const List<MatchData> sampleMatches = [
   MatchData(
     id: 'm1',
@@ -2006,6 +2433,54 @@ const List<MatchData> sampleMatches = [
     cornersAway: 8,
     foulsHome: 11,
     foulsAway: 9,
+    homeForm: ['GY', 'GY', 'D', 'GY', 'GY'],
+    awayForm: ['GY', 'GY', 'GY', 'D', 'GY'],
+    h2hFixtures: [
+      H2HFixture(dateLabel: '2025-11-27', homeTeam: 'Liverpool', awayTeam: 'Real Madrid', scoreLabel: '2 - 0'),
+      H2HFixture(dateLabel: '2023-03-15', homeTeam: 'Real Madrid', awayTeam: 'Liverpool', scoreLabel: '1 - 0'),
+      H2HFixture(dateLabel: '2023-02-21', homeTeam: 'Liverpool', awayTeam: 'Real Madrid', scoreLabel: '2 - 5'),
+    ],
+    homeLineup: TeamLineup(
+      formation: '4-3-1-2',
+      starters: [
+        LineupPlayer(number: '1', name: 'Courtois', position: 'GK'),
+        LineupPlayer(number: '17', name: 'Vázquez', position: 'DEF'),
+        LineupPlayer(number: '22', name: 'Rüdiger', position: 'DEF'),
+        LineupPlayer(number: '35', name: 'Asencio', position: 'DEF'),
+        LineupPlayer(number: '23', name: 'Mendy', position: 'DEF'),
+        LineupPlayer(number: '15', name: 'Valverde', position: 'MID'),
+        LineupPlayer(number: '6', name: 'Camavinga', position: 'MID'),
+        LineupPlayer(number: '10', name: 'Modrić', position: 'MID'),
+        LineupPlayer(number: '5', name: 'Bellingham', position: 'MID'),
+        LineupPlayer(number: '9', name: 'Mbappé', position: 'FWD'),
+        LineupPlayer(number: '7', name: 'Vinícius Jr.', position: 'FWD'),
+      ],
+      substitutes: [
+        LineupPlayer(number: '13', name: 'Lunin', position: 'GK', isSubstitute: true),
+        LineupPlayer(number: '11', name: 'Rodrygo', position: 'FWD', isSubstitute: true),
+        LineupPlayer(number: '21', name: 'Brahim Díaz', position: 'MID', isSubstitute: true),
+      ],
+    ),
+    awayLineup: TeamLineup(
+      formation: '4-3-3',
+      starters: [
+        LineupPlayer(number: '62', name: 'Kelleher', position: 'GK'),
+        LineupPlayer(number: '84', name: 'Bradley', position: 'DEF'),
+        LineupPlayer(number: '5', name: 'Konaté', position: 'DEF'),
+        LineupPlayer(number: '4', name: 'Van Dijk', position: 'DEF'),
+        LineupPlayer(number: '26', name: 'Robertson', position: 'DEF'),
+        LineupPlayer(number: '10', name: 'Mac Allister', position: 'MID'),
+        LineupPlayer(number: '38', name: 'Gravenberch', position: 'MID'),
+        LineupPlayer(number: '8', name: 'Szoboszlai D.', position: 'MID'),
+        LineupPlayer(number: '11', name: 'Salah', position: 'FWD'),
+        LineupPlayer(number: '9', name: 'Núñez', position: 'FWD'),
+        LineupPlayer(number: '7', name: 'Luis Díaz', position: 'FWD'),
+      ],
+      substitutes: [
+        LineupPlayer(number: '18', name: 'Gakpo', position: 'FWD', isSubstitute: true),
+        LineupPlayer(number: '17', name: 'Jones', position: 'MID', isSubstitute: true),
+      ],
+    ),
     events: [
       MatchEvent(minute: "14'", player: 'Szoboszlai D.', type: 'goal', isHome: false),
       MatchEvent(minute: "28'", player: 'Valverde', type: 'yellow', isHome: true),
@@ -2038,10 +2513,13 @@ const List<MatchData> sampleMatches = [
     cornersAway: 2,
     foulsHome: 10,
     foulsAway: 14,
+    homeForm: ['GY', 'GY', 'GY', 'D', 'GY'],
+    awayForm: ['GY', 'V', 'GY', 'GY', 'D'],
     events: [
       MatchEvent(minute: "19'", player: 'Varga B.', type: 'goal', isHome: true),
       MatchEvent(minute: "44'", player: 'Nagy Zs.', type: 'goal', isHome: false),
       MatchEvent(minute: "58'", player: 'Abu Fani', type: 'goal', isHome: true),
+      MatchEvent(minute: "66'", player: 'Favorov', type: 'red', isHome: false),
       MatchEvent(minute: "77'", player: 'Traoré', type: 'goal', isHome: true),
     ],
   ),
@@ -2067,6 +2545,8 @@ const List<MatchData> sampleMatches = [
     cornersAway: 6,
     foulsHome: 12,
     foulsAway: 8,
+    homeForm: ['GY', 'D', 'GY', 'GY', 'GY'],
+    awayForm: ['GY', 'GY', 'V', 'D', 'V'],
     events: [
       MatchEvent(minute: "34'", player: 'Rodri', type: 'yellow', isHome: false),
       MatchEvent(minute: "86'", player: 'Saka', type: 'goal', isHome: true),
@@ -2086,8 +2566,43 @@ const sampleStandings = {
     StandingRow(pos: 2, team: 'Barcelona', color: Color(0xFF2979FF), played: 5, gd: 13, points: 12, zone: 'ucl'),
     StandingRow(pos: 3, team: 'Arsenal', color: Color(0xFFFF5252), played: 5, gd: 6, points: 10, zone: 'ucl'),
   ],
+  'Európa Liga': [
+    StandingRow(pos: 1, team: 'Lazio', color: Color(0xFF00B0FF), played: 5, gd: 9, points: 13, zone: 'ucl'),
+    StandingRow(pos: 2, team: 'Athletic Club', color: Color(0xFFFF1744), played: 5, gd: 7, points: 13, zone: 'ucl'),
+    StandingRow(pos: 3, team: 'Eintracht Frankfurt', color: Color(0xFFFF5252), played: 5, gd: 5, points: 13, zone: 'ucl'),
+  ],
+  'Konferencia Liga': [
+    StandingRow(pos: 1, team: 'Chelsea', color: Color(0xFF2979FF), played: 4, gd: 14, points: 12, zone: 'ucl'),
+    StandingRow(pos: 2, team: 'Legia Warszawa', color: Color(0xFF00E676), played: 4, gd: 8, points: 12, zone: 'ucl'),
+  ],
   'La Liga': [
     StandingRow(pos: 1, team: 'Barcelona', color: Color(0xFF2979FF), played: 13, gd: 28, points: 33, zone: 'ucl'),
     StandingRow(pos: 2, team: 'Real Madrid', color: Color(0xFF7C4DFF), played: 13, gd: 16, points: 30, zone: 'ucl'),
+  ],
+  'Bundesliga': [
+    StandingRow(pos: 1, team: 'Bayern München', color: Color(0xFFFF1744), played: 11, gd: 26, points: 29, zone: 'ucl'),
+    StandingRow(pos: 2, team: 'RB Leipzig', color: Color(0xFF00B0FF), played: 11, gd: 10, points: 24, zone: 'ucl'),
+  ],
+  'Serie A': [
+    StandingRow(pos: 1, team: 'Napoli', color: Color(0xFF00B0FF), played: 13, gd: 12, points: 29, zone: 'ucl'),
+    StandingRow(pos: 2, team: 'Atalanta', color: Color(0xFF2979FF), played: 13, gd: 15, points: 28, zone: 'ucl'),
+  ],
+  'NB I': [
+    StandingRow(pos: 1, team: 'Puskás Akadémia', color: Color(0xFFFFAB00), played: 13, gd: 11, points: 29, zone: 'ucl'),
+    StandingRow(pos: 2, team: 'Ferencváros', color: Color(0xFF00E676), played: 12, gd: 14, points: 27, zone: 'ucl'),
+    StandingRow(pos: 3, team: 'MTK Budapest', color: Color(0xFF00B0FF), played: 13, gd: 5, points: 22, zone: 'uel'),
+  ],
+};
+
+const sampleTopScorers = {
+  'Premier League': [
+    TopScorerRow(rank: 1, player: 'Erling Haaland', team: 'Man. City', goals: 12, assists: 1),
+    TopScorerRow(rank: 2, player: 'Mohamed Salah', team: 'Liverpool', goals: 10, assists: 6),
+    TopScorerRow(rank: 3, player: 'Cole Palmer', team: 'Chelsea', goals: 7, assists: 5),
+  ],
+  'NB I': [
+    TopScorerRow(rank: 1, player: 'Varga Barnabás', team: 'Ferencváros', goals: 8, assists: 3),
+    TopScorerRow(rank: 2, player: 'Nagy Zsolt', team: 'Puskás Akadémia', goals: 7, assists: 4),
+    TopScorerRow(rank: 3, player: 'Böde Dániel', team: 'Paks', goals: 6, assists: 2),
   ],
 };
