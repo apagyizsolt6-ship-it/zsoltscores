@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide CollapseMode;
 import 'package:flutter/services.dart';
 import 'api_service.dart';
 
