@@ -24,6 +24,7 @@ class HungarianLocalization {
     'scotland': 'Skócia',
     'wales': 'Wales',
     'ireland': 'Írország',
+    'northern ireland': 'Észak-Írország',
     'poland': 'Lengyelország',
     'czech republic': 'Csehország',
     'czechia': 'Csehország',
@@ -31,28 +32,93 @@ class HungarianLocalization {
     'romania': 'Románia',
     'croatia': 'Horvátország',
     'serbia': 'Szerbia',
+    'bosnia': 'Bosznia-Hercegovina',
+    'bosnia and herzegovina': 'Bosznia-Hercegovina',
+    'bosnia-herzegovina': 'Bosznia-Hercegovina',
+    'slovenia': 'Szlovénia',
+    'montenegro': 'Montenegró',
+    'albania': 'Albánia',
+    'north macedonia': 'Észak-Macedónia',
+    'bulgaria': 'Bulgária',
     'greece': 'Görögország',
     'turkey': 'Törökország',
     'ukraine': 'Ukrajna',
     'russia': 'Oroszország',
+    'belarus': 'Fehéroroszország',
     'sweden': 'Svédország',
     'norway': 'Norvégia',
     'denmark': 'Dánia',
     'finland': 'Finnország',
+    'iceland': 'Izland',
+    'estonia': 'Észtország',
+    'latvia': 'Lettország',
+    'lithuania': 'Litvánia',
+    'moldova': 'Moldova',
+    'georgia': 'Grúzia',
+    'armenia': 'Örményország',
+    'azerbaijan': 'Azerbajdzsán',
+    'kazakhstan': 'Kazahsztán',
+    'cyprus': 'Ciprus',
+    'malta': 'Málta',
+    'luxembourg': 'Luxemburg',
+    'congo dr': 'Kongói DK',
+    'dr congo': 'Kongói DK',
+    'congo': 'Kongó',
+    'iran': 'Irán',
+    'islamic republic of iran': 'Irán',
+    'jordan': 'Jordánia',
+    'syria': 'Szíria',
+    'iraq': 'Irak',
+    'lebanon': 'Libanon',
+    'israel': 'Izrael',
+    'egypt': 'Egyiptom',
+    'morocco': 'Marokkó',
+    'tunisia': 'Tunézia',
+    'algeria': 'Algéria',
+    'nigeria': 'Nigéria',
+    'ghana': 'Ghána',
+    'south africa': 'Dél-Afrika',
+    'kenya': 'Kenya',
+    'cameroon': 'Kamerun',
+    'senegal': 'Szenegál',
+    'ivory coast': 'Elefántcsontpart',
     'brazil': 'Brazília',
     'argentina': 'Argentína',
+    'colombia': 'Kolumbia',
+    'chile': 'Chile',
+    'uruguay': 'Uruguay',
+    'peru': 'Peru',
+    'paraguay': 'Paraguay',
+    'ecuador': 'Ecuador',
+    'venezuela': 'Venezuela',
+    'bolivia': 'Bolívia',
     'usa': 'Egyesült Államok',
     'united states': 'Egyesült Államok',
+    'canada': 'Kanada',
     'mexico': 'Mexikó',
     'japan': 'Japán',
     'south korea': 'Dél-Korea',
+    'korea republic': 'Dél-Korea',
     'china': 'Kína',
+    'india': 'India',
+    'indonesia': 'Indonézia',
+    'thailand': 'Thaiföld',
+    'vietnam': 'Vietnám',
+    'malaysia': 'Malajzia',
     'saudi arabia': 'Szaúd-Arábia',
     'qatar': 'Katar',
+    'uae': 'Egyesült Arab Emírségek',
+    'united arab emirates': 'Egyesült Arab Emírségek',
+    'uzbekistan': 'Üzbegisztán',
     'australia': 'Ausztrália',
+    'new zealand': 'Új-Zéland',
     'world': 'Nemzetközi',
     'international': 'Nemzetközi',
     'europe': 'Európa',
+    'asia': 'Ázsia',
+    'africa': 'Afrika',
+    'south america': 'Dél-Amerika',
+    'north america': 'Észak-Amerika',
   };
 
   static const Map<String, String> _leagueMap = {
@@ -131,12 +197,35 @@ class HungarianLocalization {
     'conference league': 'Európa',
   };
 
-  static String localizeCountry(String? rawCountry, {String? leagueName}) {
-    final cleaned = (rawCountry ?? '').trim();
+  // Biztonságosan kiszedi az országnevet akkor is, ha Map vagy Map.toString() formában érkezik
+  static String extractRawCountry(dynamic input) {
+    if (input == null) return '';
+    if (input is Map) {
+      final val = input['name'] ??
+          input['Name'] ??
+          input['country'] ??
+          input['country_name'] ??
+          input['title'] ??
+          '';
+      return val.toString().trim();
+    }
+    final str = input.toString().trim();
+    if (str.startsWith('{') && str.contains('name')) {
+      final match = RegExp(r'''['"]?name['"]?\s*:\s*['"]?([^,}'"]+)['"]?''', caseSensitive: false)
+          .firstMatch(str);
+      if (match != null && match.group(1) != null) {
+        return match.group(1)!.trim();
+      }
+    }
+    return str;
+  }
+
+  static String localizeCountry(dynamic rawCountry, {String? leagueName}) {
+    final cleaned = extractRawCountry(rawCountry);
     if (cleaned.isNotEmpty) {
       final lower = cleaned.toLowerCase();
       if (_countryMap.containsKey(lower)) return _countryMap[lower]!;
-      return _titleCase(cleaned);
+      return _titleCase(cleaned.toLowerCase());
     }
 
     final lCleaned = (leagueName ?? '').trim().toLowerCase();
@@ -146,8 +235,8 @@ class HungarianLocalization {
     return 'Nemzetközi';
   }
 
-  static String localizeLeague(String? rawLeague, {String? countryName}) {
-    var cleaned = (rawLeague ?? '').trim();
+  static String localizeLeague(dynamic rawLeague, {String? countryName}) {
+    var cleaned = extractRawCountry(rawLeague);
     if (cleaned.isEmpty) return 'Egyéb bajnokság';
 
     final lower = cleaned.toLowerCase();
@@ -155,7 +244,6 @@ class HungarianLocalization {
       return _leagueMap[lower]!;
     }
 
-    // Ha az ország neve szerepel a liga elején (pl. "England - Premier League"), szétválasztjuk
     if (countryName != null && countryName.trim().isNotEmpty) {
       final cLower = countryName.trim().toLowerCase();
       final prefixPattern = RegExp('^${RegExp.escape(cLower)}\\s*[-:–|]\\s*', caseSensitive: false);
@@ -166,7 +254,7 @@ class HungarianLocalization {
       if (cleaned.toLowerCase() == entry.key) return entry.value;
     }
 
-    return _titleCase(cleaned);
+    return _titleCase(cleaned.toLowerCase());
   }
 
   static String _titleCase(String input) {
@@ -176,7 +264,7 @@ class HungarianLocalization {
         .map((w) {
           if (w.isEmpty) return w;
           final upperCheck = w.toUpperCase();
-          if (upperCheck == 'UEFA' || upperCheck == 'FIFA' || upperCheck == 'MLS' || upperCheck == 'NB') {
+          if (upperCheck == 'UEFA' || upperCheck == 'FIFA' || upperCheck == 'MLS' || upperCheck == 'NB' || upperCheck == 'U17' || upperCheck == 'U19' || upperCheck == 'U21') {
             return upperCheck;
           }
           return w[0].toUpperCase() + w.substring(1);
@@ -573,9 +661,9 @@ class MatchData {
   factory MatchData.fromCacheMap(Map json) {
     final homeName = (json['homeTeam'] ?? 'Hazai').toString();
     final awayName = (json['awayTeam'] ?? 'Vendég').toString();
-    final rawLeague = (json['league'] ?? 'Egyéb bajnokság').toString();
-    final rawCountry = json['country']?.toString();
-    final localizedCountry = HungarianLocalization.localizeCountry(rawCountry, leagueName: rawLeague);
+    final rawLeague = json['league'] ?? 'Egyéb bajnokság';
+    final rawCountry = json['country'];
+    final localizedCountry = HungarianLocalization.localizeCountry(rawCountry, leagueName: rawLeague.toString());
     final localizedLeague = HungarianLocalization.localizeLeague(rawLeague, countryName: localizedCountry);
 
     final evList = <MatchEvent>[];
@@ -793,7 +881,7 @@ class SportsApiService {
 
     final dateStr = formatDate(date);
     final todayStr = formatDate(DateTime.now());
-    final cacheKey = '${ApiConfig.providerTag}_matches_hu_$dateStr';
+    final cacheKey = '${ApiConfig.providerTag}_matches_hu_v2_$dateStr';
     final ttl = dateStr == todayStr
         ? Duration(minutes: ApiCache.cacheMinutes)
         : const Duration(hours: 12);
@@ -975,12 +1063,11 @@ class SportsApiService {
         if (item is Map) {
           final leagueObj = item['league'] ?? item['competition'] ?? item['tournament'];
           final rawLeague = leagueObj is Map
-              ? (_attr(leagueObj, ['name', 'title']) ?? 'Egyéb bajnokság').toString()
-              : (leagueObj?.toString() ?? 'Egyéb bajnokság');
-          final rawCountry = (leagueObj is Map
-                  ? (_attr(leagueObj, ['country', 'country_name', 'nation']) ?? '')
-                  : '')
-              .toString();
+              ? (_attr(leagueObj, ['name', 'title']) ?? 'Egyéb bajnokság')
+              : (leagueObj ?? 'Egyéb bajnokság');
+          final rawCountry = leagueObj is Map
+              ? (_attr(leagueObj, ['country', 'country_name', 'nation']) ?? '')
+              : '';
           final dateRaw = (_attr(item, ['date', 'match_date', 'kickoff', 'start_time', 'utc_date']) ?? '').toString();
           if (filterByDate && !_statPalMatchesDate(dateRaw, targetDate)) continue;
           results.add(_parseStatPalSingleMatch(item, rawLeague, rawCountry: rawCountry));
@@ -1004,8 +1091,8 @@ class SportsApiService {
     final leagues = _asMapList(root['league'] ?? root['leagues'] ?? root['tournament']);
     for (final lItem in leagues) {
       final lMap = lItem as Map;
-      final rawLeague = (_attr(lMap, ['name', 'league_name']) ?? 'Egyéb bajnokság').toString();
-      final rawCountry = (_attr(lMap, ['country', 'country_name', 'nation']) ?? '').toString();
+      final rawLeague = _attr(lMap, ['name', 'league_name']) ?? 'Egyéb bajnokság';
+      final rawCountry = _attr(lMap, ['country', 'country_name', 'nation']) ?? '';
       final matches = _asMapList(lMap['match'] ?? lMap['matches'] ?? lMap['fixture']);
       for (final mItem in matches) {
         final mMap = mItem as Map;
@@ -1062,7 +1149,7 @@ class SportsApiService {
     return DateTime(y, m, d, hh, mm);
   }
 
-  static MatchData _parseStatPalSingleMatch(Map m, String rawLeagueName, {String rawCountry = ''}) {
+  static MatchData _parseStatPalSingleMatch(Map m, dynamic rawLeagueName, {dynamic rawCountry = ''}) {
     final homeRaw = m['home'] ?? m['localteam'] ?? m['homeTeam'] ?? m['home_team'];
     final awayRaw = m['away'] ?? m['visitorteam'] ?? m['awayTeam'] ?? m['away_team'];
 
@@ -1076,11 +1163,12 @@ class SportsApiService {
         ? (_attr(awayMap, ['name', 'team_name', 'short_name']) ?? 'Vendég').toString()
         : (awayRaw?.toString() ?? 'Vendég');
 
-    final countryCandidate = rawCountry.isNotEmpty
+    final rawLeagueStr = HungarianLocalization.extractRawCountry(rawLeagueName);
+    final countryCandidate = HungarianLocalization.extractRawCountry(rawCountry).isNotEmpty
         ? rawCountry
-        : (_attr(m, ['country', 'country_name', 'nation']) ?? '').toString();
-    final country = HungarianLocalization.localizeCountry(countryCandidate, leagueName: rawLeagueName);
-    final league = HungarianLocalization.localizeLeague(rawLeagueName, countryName: country);
+        : (_attr(m, ['country', 'country_name', 'nation']) ?? '');
+    final country = HungarianLocalization.localizeCountry(countryCandidate, leagueName: rawLeagueStr);
+    final league = HungarianLocalization.localizeLeague(rawLeagueStr, countryName: country);
 
     final homeId = _attr(homeMap, ['id'])?.toString();
     final awayId = _attr(awayMap, ['id'])?.toString();
@@ -1290,7 +1378,6 @@ class SportsApiService {
     final homeMap = m['homeTeam'] is Map ? m['homeTeam'] as Map : {};
     final awayMap = m['awayTeam'] is Map ? m['awayTeam'] as Map : {};
     final leagueMap = m['league'] is Map ? m['league'] as Map : {};
-    final countryMap = leagueMap['country'] is Map ? leagueMap['country'] as Map : {};
     final stateMap = m['state'] is Map ? m['state'] as Map : {};
 
     final homeName = (homeMap['name'] ?? m['homeTeam'] ?? 'Hazai').toString();
@@ -1298,8 +1385,10 @@ class SportsApiService {
     final homeId = homeMap['id']?.toString();
     final awayId = awayMap['id']?.toString();
 
-    final rawLeague = (leagueMap['name'] ?? m['league'] ?? 'Egyéb bajnokság').toString();
-    final rawCountry = (countryMap['name'] ?? leagueMap['country'] ?? m['country'] ?? '').toString();
+    final rawLeague = HungarianLocalization.extractRawCountry(leagueMap['name'] ?? m['league'] ?? 'Egyéb bajnokság');
+    final rawCountry = HungarianLocalization.extractRawCountry(
+      leagueMap['country'] ?? m['country'] ?? '',
+    );
     final country = HungarianLocalization.localizeCountry(rawCountry, leagueName: rawLeague);
     final league = HungarianLocalization.localizeLeague(rawLeague, countryName: country);
 
