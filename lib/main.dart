@@ -35,6 +35,96 @@ class ZsoltScoresApp extends StatelessWidget {
   }
 }
 
+// --- MAGYAR ABC-SORRENDEZŐ SEGÉDFÜGGVÉNY ---
+int compareHungarianStrings(String a, String b) {
+  const order = {
+    'a': 1,
+    'á': 2,
+    'b': 3,
+    'c': 4,
+    'cs': 5,
+    'd': 6,
+    'dz': 7,
+    'dzs': 8,
+    'e': 9,
+    'é': 10,
+    'f': 11,
+    'g': 12,
+    'gy': 13,
+    'h': 14,
+    'i': 15,
+    'í': 16,
+    'j': 17,
+    'k': 18,
+    'l': 19,
+    'ly': 20,
+    'm': 21,
+    'n': 22,
+    'ny': 23,
+    'o': 24,
+    'ó': 25,
+    'ö': 26,
+    'ő': 27,
+    'p': 28,
+    'q': 29,
+    'r': 30,
+    's': 31,
+    'sz': 32,
+    't': 33,
+    'ty': 34,
+    'u': 35,
+    'ú': 36,
+    'ü': 37,
+    'ű': 38,
+    'v': 39,
+    'w': 40,
+    'x': 41,
+    'y': 42,
+    'z': 43,
+    'zs': 44,
+  };
+
+  List<int> tokenize(String s) {
+    final lower = s.toLowerCase().trim();
+    final tokens = <int>[];
+    int i = 0;
+    while (i < lower.length) {
+      if (i + 2 < lower.length) {
+        final tri = lower.substring(i, i + 3);
+        if (order.containsKey(tri)) {
+          tokens.add(order[tri]! * 10);
+          i += 3;
+          continue;
+        }
+      }
+      if (i + 1 < lower.length) {
+        final di = lower.substring(i, i + 2);
+        if (order.containsKey(di)) {
+          tokens.add(order[di]! * 10);
+          i += 2;
+          continue;
+        }
+      }
+      final ch = lower[i];
+      if (order.containsKey(ch)) {
+        tokens.add(order[ch]! * 10);
+      } else {
+        tokens.add(1000 + ch.codeUnitAt(0));
+      }
+      i++;
+    }
+    return tokens;
+  }
+
+  final ta = tokenize(a);
+  final tb = tokenize(b);
+  final len = ta.length < tb.length ? ta.length : tb.length;
+  for (int i = 0; i < len; i++) {
+    if (ta[i] != tb[i]) return ta[i].compareTo(tb[i]);
+  }
+  return ta.length.compareTo(tb.length);
+}
+
 // --- HELYI GYORSÍTÓTÁRAZOTT CSAPATLOGÓ WIDGET ---
 class CachedTeamLogo extends StatefulWidget {
   final String teamName;
@@ -516,7 +606,7 @@ class _MainShellState extends State<MainShell> {
   }
 }
 
-// --- 1. MECCSEK FÜL (ORSZÁG + BAJNOKSÁG FEJLÉCCEL, MAGYAROSÍTVA) ---
+// --- 1. MECCSEK FÜL (ORSZÁG ALAPÚ ABC-SORREND + ÖSSZES NYITÁSA/CSUKÁSA) ---
 class MatchesTab extends StatefulWidget {
   final List<MatchData> matches;
   final DateTime selectedDate;
@@ -575,15 +665,23 @@ class _MatchesTabState extends State<MatchesTab> {
     return base;
   }
 
+  void _toggleAllCompetitions(List<String> visibleCompetitions) {
+    if (visibleCompetitions.isEmpty) return;
+    final allCollapsed = visibleCompetitions.every((c) => _collapsedCompetitions.contains(c));
+    setState(() {
+      if (allCollapsed) {
+        _collapsedCompetitions.removeAll(visibleCompetitions);
+      } else {
+        _collapsedCompetitions.addAll(visibleCompetitions);
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final dynamicCompetitions = <String>{
-      'Összes',
-      ...widget.matches.map((m) => m.fullCompetitionLabel),
-    }.toList();
-    if (!dynamicCompetitions.contains(selectedCompetition)) selectedCompetition = 'Összes';
-
+    final groupedByCompetition = <String, List<MatchData>>{};
     final liveCount = widget.matches.where((m) => m.isLive).length;
+
     final filteredMatches = widget.matches.where((m) {
       final matchesComp = selectedCompetition == 'Összes' || m.fullCompetitionLabel == selectedCompetition;
       final matchesLive = !onlyLive || m.isLive;
@@ -596,12 +694,41 @@ class _MatchesTabState extends State<MatchesTab> {
       return matchesComp && matchesLive && matchesSearch;
     }).toList();
 
-    // Ország + Bajnokság szerinti csoportosítás
-    final groupedByCompetition = <String, List<MatchData>>{};
     for (final m in filteredMatches) {
       groupedByCompetition.putIfAbsent(m.fullCompetitionLabel, () => []).add(m);
     }
-    final competitionKeys = groupedByCompetition.keys.toList();
+
+    // ABC-sorrend ORSZÁG NÉV alapján (majd bajnokság név alapján)
+    final competitionKeys = groupedByCompetition.keys.toList()
+      ..sort((a, b) {
+        final ma = groupedByCompetition[a]!.first;
+        final mb = groupedByCompetition[b]!.first;
+        final countryCmp = compareHungarianStrings(ma.country, mb.country);
+        if (countryCmp != 0) return countryCmp;
+        return compareHungarianStrings(ma.league, mb.league);
+      });
+
+    // A felső szűrőcsíkot is ország név szerinti ABC-sorrendben rendezzük
+    final allCompSet = <String>{};
+    final compSampleMap = <String, MatchData>{};
+    for (final m in widget.matches) {
+      allCompSet.add(m.fullCompetitionLabel);
+      compSampleMap.putIfAbsent(m.fullCompetitionLabel, () => m);
+    }
+    final sortedChipComps = allCompSet.toList()
+      ..sort((a, b) {
+        final ma = compSampleMap[a]!;
+        final mb = compSampleMap[b]!;
+        final countryCmp = compareHungarianStrings(ma.country, mb.country);
+        if (countryCmp != 0) return countryCmp;
+        return compareHungarianStrings(ma.league, mb.league);
+      });
+
+    final dynamicCompetitions = ['Összes', ...sortedChipComps];
+    if (!dynamicCompetitions.contains(selectedCompetition)) selectedCompetition = 'Összes';
+
+    final areAllCollapsed =
+        competitionKeys.isNotEmpty && competitionKeys.every((c) => _collapsedCompetitions.contains(c));
 
     final countText = '${widget.matches.length} meccs';
     final provName = ApiConfig.providerName;
@@ -658,6 +785,28 @@ class _MatchesTabState extends State<MatchesTab> {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ],
+                      ),
+                    ),
+                    // Összes bajnokság egy gombos nyitása / csukása
+                    Tooltip(
+                      message: areAllCollapsed ? 'Összes bajnokság kinyitása' : 'Összes bajnokság összecsukása',
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () => _toggleAllCompetitions(competitionKeys),
+                        child: Container(
+                          padding: const EdgeInsets.all(7),
+                          margin: const EdgeInsets.only(right: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0B132B).withAlpha(180),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFF00B0FF).withAlpha(110)),
+                          ),
+                          child: Icon(
+                            areAllCollapsed ? Icons.unfold_more : Icons.unfold_less,
+                            color: const Color(0xFF00B0FF),
+                            size: 19,
+                          ),
+                        ),
                       ),
                     ),
                     GestureDetector(
@@ -843,7 +992,7 @@ class _MatchesTabState extends State<MatchesTab> {
               ),
             ),
 
-          // Gyors bajnokság-választó sáv (Ország • Bajnokság)
+          // Gyors bajnokság-választó sáv (ország alapú ABC-sorrendben)
           SizedBox(
             height: 46,
             child: ListView.builder(
@@ -891,7 +1040,7 @@ class _MatchesTabState extends State<MatchesTab> {
             ),
           ),
 
-          // Eredmények.com stílusú meccslista, ORSZÁG + BAJNOKSÁG fejléccel
+          // Eredmények.com stílusú meccslista, ORSZÁG + BAJNOKSÁG fejléccel, ABC-sorrendben
           Expanded(
             child: RefreshIndicator(
               color: const Color(0xFF00E676),
@@ -931,7 +1080,6 @@ class _MatchesTabState extends State<MatchesTab> {
                           ),
                           child: Column(
                             children: [
-                              // Liga-fejléc: ORSZÁG NEVE + BAJNOKSÁG NEVE
                               InkWell(
                                 borderRadius: BorderRadius.vertical(
                                   top: const Radius.circular(14),
@@ -972,7 +1120,6 @@ class _MatchesTabState extends State<MatchesTab> {
                                         ),
                                       ),
                                       const SizedBox(width: 8),
-                                      // Ország név jelvény
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                                         decoration: BoxDecoration(
@@ -998,7 +1145,6 @@ class _MatchesTabState extends State<MatchesTab> {
                                         ),
                                       ),
                                       const SizedBox(width: 7),
-                                      // Bajnokság neve
                                       Expanded(
                                         child: Text(
                                           leagueName,
@@ -1033,7 +1179,6 @@ class _MatchesTabState extends State<MatchesTab> {
                                 ),
                               ),
 
-                              // A bajnoksághoz tartozó kompakt soronkénti meccsek
                               if (!isCollapsed)
                                 ...List.generate(compMatches.length, (mIdx) {
                                   final match = compMatches[mIdx];
