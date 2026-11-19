@@ -9,15 +9,23 @@ enum ApiProvider { highlightly, statpal }
 
 enum CollapseMode { liveOrPinned, allExpanded, allCollapsed }
 
-// --- MEGJELENÉSI BEÁLLÍTÁSOK (KITŰZÖTT LIGÁK + KEZDŐ CSUKÁSI MÓD + ÉLŐ KÖVETÉS) ---
+// --- MEGJELENÉSI ÉS RIASZTÁSI BEÁLLÍTÁSOK ---
 class DisplayPrefs {
   static const _pinnedKey = 'zsolt_pinned_competitions';
   static const _collapseModeKey = 'zsolt_collapse_mode';
   static const _autoLiveListKey = 'zsolt_auto_live_list';
+  static const _favTeamsKey = 'zsolt_favorite_teams';
+  static const _alertGoalKey = 'zsolt_alert_goal';
+  static const _alertRedKey = 'zsolt_alert_red';
+  static const _alertEndKey = 'zsolt_alert_end';
 
   static Set<String> pinnedCompetitions = {'Magyarország • NB I', 'Európa • Bajnokok Ligája'};
   static CollapseMode collapseMode = CollapseMode.liveOrPinned;
   static bool autoLiveListRefresh = true;
+  static List<String> favoriteTeams = ['Ferencváros', 'Liverpool', 'Real Madrid'];
+  static bool alertOnGoal = true;
+  static bool alertOnRedCard = true;
+  static bool alertOnFinish = true;
 
   static Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -34,6 +42,22 @@ class DisplayPrefs {
       collapseMode = CollapseMode.liveOrPinned;
     }
     autoLiveListRefresh = prefs.getBool(_autoLiveListKey) ?? true;
+    final savedTeams = prefs.getStringList(_favTeamsKey);
+    if (savedTeams != null) {
+      favoriteTeams = savedTeams.where((e) => e.trim().isNotEmpty).toList();
+    }
+    alertOnGoal = prefs.getBool(_alertGoalKey) ?? true;
+    alertOnRedCard = prefs.getBool(_alertRedKey) ?? true;
+    alertOnFinish = prefs.getBool(_alertEndKey) ?? true;
+  }
+
+  static bool isFavoriteTeam(String teamName) {
+    final t = teamName.trim().toLowerCase();
+    if (t.isEmpty) return false;
+    return favoriteTeams.any((fav) {
+      final f = fav.trim().toLowerCase();
+      return f.isNotEmpty && (t.contains(f) || f.contains(t));
+    });
   }
 
   static Future<void> togglePin(String competitionKey) async {
@@ -56,6 +80,33 @@ class DisplayPrefs {
     autoLiveListRefresh = enabled;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_autoLiveListKey, enabled);
+  }
+
+  static Future<void> saveDisplayAndAlerts({
+    required CollapseMode newCollapseMode,
+    required bool newAutoLiveList,
+    required List<String> newFavoriteTeams,
+    required bool goalAlert,
+    required bool redAlert,
+    required bool endAlert,
+  }) async {
+    collapseMode = newCollapseMode;
+    autoLiveListRefresh = newAutoLiveList;
+    favoriteTeams = newFavoriteTeams
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    alertOnGoal = goalAlert;
+    alertOnRedCard = redAlert;
+    alertOnFinish = endAlert;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_collapseModeKey, collapseMode.name);
+    await prefs.setBool(_autoLiveListKey, autoLiveListRefresh);
+    await prefs.setStringList(_favTeamsKey, favoriteTeams);
+    await prefs.setBool(_alertGoalKey, alertOnGoal);
+    await prefs.setBool(_alertRedKey, alertOnRedCard);
+    await prefs.setBool(_alertEndKey, alertOnFinish);
   }
 }
 
@@ -86,7 +137,7 @@ class HungarianLocalization {
     'serbia': 'Szerbia',
     'bosnia': 'Bosznia-Hercegovina',
     'bosnia and herzegovina': 'Bosznia-Hercegovina',
-    'bosnia-hercegovina': 'Bosznia-Hercegovina',
+    'bosnia-herzegovina': 'Bosznia-Hercegovina',
     'slovenia': 'Szlovénia',
     'montenegro': 'Montenegró',
     'albania': 'Albánia',
@@ -640,7 +691,9 @@ class ApiCache {
 class FetchResult<T> {
   final T data;
   final bool fromCache;
-  const FetchResult({required this.data, required this.fromCache});
+  final DateTime fetchedAt;
+  FetchResult({required this.data, required this.fromCache, DateTime? fetchedAt})
+      : fetchedAt = fetchedAt ?? DateTime.now();
 }
 
 // --- ADATMODELLEK ---
@@ -813,7 +866,7 @@ class MatchData {
   final List<HighlightClip> highlights;
   final TeamLineup? homeLineup;
   final TeamLineup? awayLineup;
-  final List<String> homeForm; // pl. ['GY', 'D', 'GY', 'V', 'GY']
+  final List<String> homeForm;
   final List<String> awayForm;
   final List<H2HFixture> h2hFixtures;
   final String? detailNote;
@@ -858,6 +911,17 @@ class MatchData {
   });
 
   String get fullCompetitionLabel => '$country • $league';
+
+  String buildShareText() {
+    final stateTag = isLive ? 'ÉLŐ • $status' : status;
+    final goalList = events
+        .where((e) => e.type == 'goal')
+        .map((e) => '${e.player} (${e.minute})')
+        .join(', ');
+    final baseLine = '⚽ $homeTeam $homeScore - $awayScore $awayTeam [$stateTag] • $league';
+    if (goalList.isEmpty) return baseLine;
+    return '$baseLine\nGóllövők: $goalList';
+  }
 
   Map toCacheMap() => {
         'id': id,
@@ -1091,9 +1155,18 @@ class SportsApiService {
     return '$y-$m-$d';
   }
 
+  static String formatClock(DateTime dt) {
+    final h = dt.hour.toString().padLeft(2, '0');
+    final min = dt.minute.toString().padLeft(2, '0');
+    return '$h:$min';
+  }
+
   static List<MatchData> _sortMatches(List<MatchData> list) {
     final sorted = List<MatchData>.of(list);
     sorted.sort((a, b) {
+      final favTeamA = DisplayPrefs.isFavoriteTeam(a.homeTeam) || DisplayPrefs.isFavoriteTeam(a.awayTeam);
+      final favTeamB = DisplayPrefs.isFavoriteTeam(b.homeTeam) || DisplayPrefs.isFavoriteTeam(b.awayTeam);
+      if (favTeamA != favTeamB) return favTeamA ? -1 : 1;
       if (a.isLive != b.isLive) return a.isLive ? -1 : 1;
       if (a.isFinished != b.isFinished) return a.isFinished ? 1 : -1;
       if (a.kickoff != null && b.kickoff != null) {
@@ -2019,7 +2092,7 @@ class SportsApiService {
     final enriched = _ensureFallbackFormAndLineup(current).copyWith(
       detailNote: rateLimited
           ? 'StatPal kéréskorlát (429) – várj 15 másodpercet a következő frissítésig.'
-          : 'StatPal V2 élő adatforrás • Forma, felállás és helyileg tárolt logók.',
+          : 'StatPal V2 élő adatforrás • Forma, 2D felállás és helyileg tárolt logók.',
     );
     if (!rateLimited) {
       await ApiCache.put(cacheKey, jsonEncode(enriched.toCacheMap()));
@@ -2203,7 +2276,7 @@ class SportsApiService {
 
   static Future<FetchResult<List<StandingRow>>> fetchStandings(
     String leagueName, {
-    String venueFilter = 'all', // 'all', 'home', 'away'
+    String venueFilter = 'all',
     bool forceRefresh = false,
   }) async {
     if (!ApiConfig.hasValidKey) throw Exception('Nincs API kulcs');
@@ -2410,7 +2483,7 @@ class SportsApiService {
   }
 }
 
-// --- DEMO MINTA ADATOK (GAZDAG ESEMÉNNYEL, FORMÁVAL, H2H-VAL, FELÁLLÁSSAL) ---
+// --- DEMO MINTA ADATOK ---
 const List<MatchData> sampleMatches = [
   MatchData(
     id: 'm1',
@@ -2441,7 +2514,7 @@ const List<MatchData> sampleMatches = [
       H2HFixture(dateLabel: '2023-02-21', homeTeam: 'Liverpool', awayTeam: 'Real Madrid', scoreLabel: '2 - 5'),
     ],
     homeLineup: TeamLineup(
-      formation: '4-3-1-2',
+      formation: '4-3-3',
       starters: [
         LineupPlayer(number: '1', name: 'Courtois', position: 'GK'),
         LineupPlayer(number: '17', name: 'Vázquez', position: 'DEF'),
@@ -2451,13 +2524,13 @@ const List<MatchData> sampleMatches = [
         LineupPlayer(number: '15', name: 'Valverde', position: 'MID'),
         LineupPlayer(number: '6', name: 'Camavinga', position: 'MID'),
         LineupPlayer(number: '10', name: 'Modrić', position: 'MID'),
-        LineupPlayer(number: '5', name: 'Bellingham', position: 'MID'),
+        LineupPlayer(number: '11', name: 'Rodrygo', position: 'FWD'),
         LineupPlayer(number: '9', name: 'Mbappé', position: 'FWD'),
-        LineupPlayer(number: '7', name: 'Vinícius Jr.', position: 'FWD'),
+        LineupPlayer(number: '7', name: 'Vinícius', position: 'FWD'),
       ],
       substitutes: [
         LineupPlayer(number: '13', name: 'Lunin', position: 'GK', isSubstitute: true),
-        LineupPlayer(number: '11', name: 'Rodrygo', position: 'FWD', isSubstitute: true),
+        LineupPlayer(number: '5', name: 'Bellingham', position: 'MID', isSubstitute: true),
         LineupPlayer(number: '21', name: 'Brahim Díaz', position: 'MID', isSubstitute: true),
       ],
     ),
@@ -2471,7 +2544,7 @@ const List<MatchData> sampleMatches = [
         LineupPlayer(number: '26', name: 'Robertson', position: 'DEF'),
         LineupPlayer(number: '10', name: 'Mac Allister', position: 'MID'),
         LineupPlayer(number: '38', name: 'Gravenberch', position: 'MID'),
-        LineupPlayer(number: '8', name: 'Szoboszlai D.', position: 'MID'),
+        LineupPlayer(number: '8', name: 'Szoboszlai', position: 'MID'),
         LineupPlayer(number: '11', name: 'Salah', position: 'FWD'),
         LineupPlayer(number: '9', name: 'Núñez', position: 'FWD'),
         LineupPlayer(number: '7', name: 'Luis Díaz', position: 'FWD'),
