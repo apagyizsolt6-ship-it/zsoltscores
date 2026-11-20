@@ -311,6 +311,153 @@ class _CachedTeamLogoState extends State<CachedTeamLogo> {
   }
 }
 
+// --- CSAPAT-PROFIL NÉZET ---
+class TeamProfileScreen extends StatefulWidget {
+  final String teamName;
+  final String? logoUrl;
+  final Color accentColor;
+  final List<String> form;
+  final List<MatchData> relatedMatches;
+  final VoidCallback onChanged;
+
+  const TeamProfileScreen({
+    super.key,
+    required this.teamName,
+    this.logoUrl,
+    required this.accentColor,
+    this.form = const [],
+    this.relatedMatches = const [],
+    required this.onChanged,
+  });
+
+  @override
+  State<TeamProfileScreen> createState() => _TeamProfileScreenState();
+}
+
+class _TeamProfileScreenState extends State<TeamProfileScreen> {
+  late bool _isFav;
+
+  @override
+  void initState() {
+    super.initState();
+    _isFav = DisplayPrefs.isFavoriteTeam(widget.teamName);
+  }
+
+  Future<void> _toggleFav() async {
+    await DisplayPrefs.toggleFavoriteTeam(widget.teamName);
+    setState(() => _isFav = DisplayPrefs.isFavoriteTeam(widget.teamName));
+    widget.onChanged();
+  }
+
+  Widget _badge(String code) {
+    Color bg;
+    if (code == 'GY') {
+      bg = const Color(0xFF00E676);
+    } else if (code == 'D') {
+      bg = const Color(0xFFFFAB00);
+    } else {
+      bg = const Color(0xFFFF1744);
+    }
+    return Container(
+      width: 24,
+      height: 24,
+      margin: const EdgeInsets.only(right: 6),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
+      child: Text(code, style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 10.5)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveForm = widget.form.isNotEmpty ? widget.form : const ['GY', 'D', 'GY', 'V', 'GY'];
+    final pts = MatchData.formPoints(effectiveForm);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.teamName),
+        backgroundColor: const Color(0xFF1C2541),
+        actions: [
+          IconButton(
+            tooltip: _isFav ? 'Eltávolítás a kedvenc csapatokból' : 'Hozzáadás a kedvenc csapatokhoz',
+            onPressed: _toggleFav,
+            icon: Icon(_isFav ? Icons.star : Icons.star_border, color: const Color(0xFFFFAB00)),
+          ),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(colors: [widget.accentColor.withAlpha(80), const Color(0xFF1C2541)]),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              children: [
+                CachedTeamLogo(teamName: widget.teamName, fallbackColor: widget.accentColor, logoUrl: widget.logoUrl, radius: 28),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(widget.teamName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 4),
+                      Text(
+                        _isFav ? '★ Kedvenc csapat (kiemelt a meccseknél)' : 'Koppints a csillagra a kedvenceléshez',
+                        style: TextStyle(fontSize: 12, color: _isFav ? const Color(0xFFFFD54F) : Colors.white70),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: const Color(0xFF1C2541), borderRadius: BorderRadius.circular(16)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Utolsó 5 meccs formája', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                    Text('$pts pont / 15', style: const TextStyle(color: Color(0xFF00E676), fontWeight: FontWeight.w900)),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(children: effectiveForm.map(_badge).toList()),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text('Kapcsolódó meccsek', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          const SizedBox(height: 8),
+          if (widget.relatedMatches.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(color: const Color(0xFF1C2541), borderRadius: BorderRadius.circular(14)),
+              child: const Text('A kiválasztott napon nincs meccs a csapattal.', style: TextStyle(color: Colors.white60)),
+            )
+          else
+            ...widget.relatedMatches.map((m) => Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(color: const Color(0xFF131D3B), borderRadius: BorderRadius.circular(14)),
+                  child: MatchCard(
+                    match: m,
+                    isFavorite: false,
+                    onToggleFavorite: () {},
+                  ),
+                )),
+        ],
+      ),
+    );
+  }
+}
+
 // --- FŐ NAVIGÁCIÓS KERET ---
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -870,7 +1017,12 @@ class _MainShellState extends State<MainShell> {
         onRefresh: () => _loadMatches(forceRefresh: true),
         onOpenSettings: _openApiSettingsDialog,
       ),
-      StandingsTab(key: ValueKey('standings_$_settingsVersion'), onOpenSettings: _openApiSettingsDialog),
+      StandingsTab(
+        key: ValueKey('standings_$_settingsVersion'),
+        allMatches: _matches,
+        onOpenSettings: _openApiSettingsDialog,
+        onTeamChanged: () => setState(() => _settingsVersion++),
+      ),
       FavoritesTab(
         allMatches: _matches,
         recentlyScoredIds: _recentlyScoredIds,
@@ -956,7 +1108,7 @@ class MatchesTab extends StatefulWidget {
 class _MatchesTabState extends State<MatchesTab> {
   final TextEditingController _searchCtrl = TextEditingController();
   String selectedCompetition = 'Összes';
-  String quickFilter = 'all'; // 'all', 'live', 'finished', 'favs'
+  String quickFilter = 'all';
   String searchQuery = '';
   final Set<String> _manualOverrides = {};
 
@@ -1056,7 +1208,8 @@ class _MatchesTabState extends State<MatchesTab> {
   @override
   Widget build(BuildContext context) {
     final groupedByCompetition = <String, List<MatchData>>{};
-    final liveCount = widget.matches.where((m) => m.isLive).length;
+    final liveMatches = widget.matches.where((m) => m.isLive).toList();
+    final liveCount = liveMatches.length;
 
     final filteredMatches = widget.matches.where((m) {
       final matchesComp = selectedCompetition == 'Összes' || m.fullCompetitionLabel == selectedCompetition;
@@ -1323,9 +1476,9 @@ class _MatchesTabState extends State<MatchesTab> {
                         child: TextField(
                           controller: _searchCtrl,
                           onChanged: (val) => setState(() => searchQuery = val),
-                          onSubmitted: (val) {
+                          onSubmitted: (val) async {
                             if (val.trim().length >= 2) {
-                              DisplayPrefs.addRecentSearch(val.trim());
+                              await DisplayPrefs.addRecentSearch(val.trim());
                               setState(() {});
                             }
                           },
@@ -1357,40 +1510,60 @@ class _MatchesTabState extends State<MatchesTab> {
                     ),
                   ],
                 ),
-                if (quickChips.isNotEmpty) ...[
+                if (quickChips.isNotEmpty || DisplayPrefs.recentSearches.isNotEmpty) ...[
                   const SizedBox(height: 7),
                   SizedBox(
                     height: 26,
-                    child: ListView.builder(
+                    child: ListView(
                       scrollDirection: Axis.horizontal,
-                      itemCount: quickChips.length,
-                      itemBuilder: (ctx, idx) {
-                        final chipText = quickChips[idx];
-                        final active = searchQuery.toLowerCase() == chipText.toLowerCase();
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 6),
-                          child: GestureDetector(
-                            onTap: () => _applyQuickSearch(active ? '' : chipText),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 9),
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: active ? const Color(0xFFFFAB00) : const Color(0xFF0B132B).withAlpha(175),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: active ? const Color(0xFFFFAB00) : Colors.white12),
-                              ),
-                              child: Text(
-                                chipText,
-                                style: TextStyle(
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: active ? Colors.black : Colors.white70,
+                      children: [
+                        ...quickChips.map((chipText) {
+                          final active = searchQuery.toLowerCase() == chipText.toLowerCase();
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: GestureDetector(
+                              onTap: () => _applyQuickSearch(active ? '' : chipText),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 9),
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: active ? const Color(0xFFFFAB00) : const Color(0xFF0B132B).withAlpha(175),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: active ? const Color(0xFFFFAB00) : Colors.white12),
+                                ),
+                                child: Text(
+                                  chipText,
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: active ? Colors.black : Colors.white70,
+                                  ),
                                 ),
                               ),
                             ),
+                          );
+                        }),
+                        if (DisplayPrefs.recentSearches.isNotEmpty)
+                          GestureDetector(
+                            onTap: () async {
+                              await DisplayPrefs.clearRecentSearches();
+                              setState(() {});
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: Colors.redAccent.withAlpha(30),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.redAccent.withAlpha(90)),
+                              ),
+                              child: const Text(
+                                '✕ Előzmény',
+                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.redAccent),
+                              ),
+                            ),
                           ),
-                        );
-                      },
+                      ],
                     ),
                   ),
                 ],
@@ -1409,6 +1582,45 @@ class _MatchesTabState extends State<MatchesTab> {
               ],
             ),
           ),
+
+          if (liveMatches.isNotEmpty)
+            SizedBox(
+              height: 58,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 2),
+                itemCount: liveMatches.length,
+                itemBuilder: (ctx, idx) {
+                  final lm = liveMatches[idx];
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () => Navigator.push(ctx, MaterialPageRoute(builder: (_) => MatchStatsScreen(match: lm))),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1C2541),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFF00E676).withAlpha(110)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(lm.status, style: const TextStyle(color: Color(0xFFFF5252), fontWeight: FontWeight.w900, fontSize: 11)),
+                            const SizedBox(width: 7),
+                            Text(
+                              '${lm.homeTeam} ${lm.homeScore}-${lm.awayScore} ${lm.awayTeam}',
+                              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
 
           if (widget.isLoading)
             const LinearProgressIndicator(color: Color(0xFF00E676), backgroundColor: Colors.transparent),
@@ -2003,10 +2215,18 @@ class MatchCard extends StatelessWidget {
   }
 }
 
-// --- 2. BŐVÍTETT TABELLA FÜL ---
+// --- 2. NAGYON RÉSZLETES TABELLA FÜL ---
 class StandingsTab extends StatefulWidget {
+  final List<MatchData> allMatches;
   final VoidCallback onOpenSettings;
-  const StandingsTab({super.key, required this.onOpenSettings});
+  final VoidCallback onTeamChanged;
+
+  const StandingsTab({
+    super.key,
+    required this.allMatches,
+    required this.onOpenSettings,
+    required this.onTeamChanged,
+  });
 
   @override
   State<StandingsTab> createState() => _StandingsTabState();
@@ -2065,6 +2285,53 @@ class _StandingsTabState extends State<StandingsTab> {
     return Colors.transparent;
   }
 
+  Widget _miniFormDot(String code) {
+    Color bg;
+    if (code == 'GY') {
+      bg = const Color(0xFF00E676);
+    } else if (code == 'D') {
+      bg = const Color(0xFFFFAB00);
+    } else {
+      bg = const Color(0xFFFF1744);
+    }
+    return Container(
+      width: 14,
+      height: 14,
+      margin: const EdgeInsets.only(right: 2),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(3)),
+      child: Text(
+        code.substring(0, 1),
+        style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 8.5),
+      ),
+    );
+  }
+
+  void _openTeamProfile(StandingRow row) {
+    final related = widget.allMatches
+        .where((m) =>
+            m.homeTeam.toLowerCase().contains(row.team.toLowerCase()) ||
+            m.awayTeam.toLowerCase().contains(row.team.toLowerCase()))
+        .toList();
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TeamProfileScreen(
+          teamName: row.team,
+          logoUrl: row.logo,
+          accentColor: row.color,
+          form: row.form,
+          relatedMatches: related,
+          onChanged: () {
+            setState(() {});
+            widget.onTeamChanged();
+          },
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final leagues = SportsApiService.highlightlyLeagueIds.keys.toList();
@@ -2094,8 +2361,8 @@ class _StandingsTabState extends State<StandingsTab> {
                     const SizedBox(height: 4),
                     Text(
                       _fromCache
-                          ? 'Gyorsítótárból (${ApiConfig.providerName}) • 2 órás védelem'
-                          : '${ApiConfig.providerName} állások, hazai/vendég & gólok',
+                          ? 'Gyorsítótárból (${ApiConfig.providerName}) • GY/D/V & Gólok'
+                          : '${ApiConfig.providerName} • Részletes állás, gólok & forma',
                       style: TextStyle(fontSize: 12, color: _fromCache ? const Color(0xFF00B0FF) : Colors.white70),
                     ),
                   ],
@@ -2211,44 +2478,82 @@ class _StandingsTabState extends State<StandingsTab> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               child: Row(
                 children: const [
-                  SizedBox(width: 28, child: Text('#', style: TextStyle(color: Colors.white54, fontSize: 12))),
-                  Expanded(child: Text('Csapat', style: TextStyle(color: Colors.white54, fontSize: 12))),
-                  SizedBox(width: 28, child: Text('M', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 12))),
-                  SizedBox(width: 36, child: Text('GK', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 12))),
-                  SizedBox(width: 34, child: Text('P', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold, fontSize: 12))),
+                  SizedBox(width: 24, child: Text('#', style: TextStyle(color: Colors.white54, fontSize: 11))),
+                  Expanded(child: Text('Csapat', style: TextStyle(color: Colors.white54, fontSize: 11))),
+                  SizedBox(width: 24, child: Text('M', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 11))),
+                  SizedBox(width: 58, child: Text('GY/D/V', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 10.5))),
+                  SizedBox(width: 44, child: Text('Gól', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 11))),
+                  SizedBox(width: 34, child: Text('GK', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 11))),
+                  SizedBox(width: 32, child: Text('P', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold, fontSize: 11))),
                 ],
               ),
             ),
             Expanded(
               child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
                 itemCount: _rows.length,
                 itemBuilder: (context, index) {
                   final r = _rows[index];
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1C2541),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border(left: BorderSide(color: _zoneColor(r.zone), width: 4)),
-                    ),
-                    child: Row(
-                      children: [
-                        SizedBox(width: 24, child: Text('${r.pos}.', style: const TextStyle(fontWeight: FontWeight.bold))),
-                        CachedTeamLogo(
-                          teamName: r.team,
-                          fallbackColor: r.color,
-                          logoUrl: r.logo,
-                          radius: 11,
-                          showInitialsOnFallback: false,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(child: Text(r.team, style: const TextStyle(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
-                        SizedBox(width: 28, child: Text('${r.played}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70))),
-                        SizedBox(width: 36, child: Text(r.gd > 0 ? '+${r.gd}' : '${r.gd}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70))),
-                        SizedBox(width: 34, child: Text('${r.points}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF00E676)))),
-                      ],
+                  final isFav = DisplayPrefs.isFavoriteTeam(r.team);
+                  final hasWdl = (r.won + r.drawn + r.lost) > 0;
+                  final wdlText = hasWdl ? '${r.won}/${r.drawn}/${r.lost}' : '-';
+                  final goalsText = (r.gf > 0 || r.ga > 0) ? '${r.gf}:${r.ga}' : '-';
+
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: () => _openTeamProfile(r),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1C2541),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border(left: BorderSide(color: _zoneColor(r.zone), width: 4)),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              SizedBox(width: 22, child: Text('${r.pos}.', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                              CachedTeamLogo(
+                                teamName: r.team,
+                                fallbackColor: r.color,
+                                logoUrl: r.logo,
+                                radius: 10,
+                                showInitialsOnFallback: false,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  isFav ? '★ ${r.team}' : r.team,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 12.5,
+                                    color: isFav ? const Color(0xFFFFD54F) : Colors.white,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              SizedBox(width: 24, child: Text('${r.played}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 11.5))),
+                              SizedBox(width: 58, child: Text(wdlText, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 11))),
+                              SizedBox(width: 44, child: Text(goalsText, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 11))),
+                              SizedBox(width: 34, child: Text(r.gd > 0 ? '+${r.gd}' : '${r.gd}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 11.5))),
+                              SizedBox(width: 32, child: Text('${r.points}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF00E676), fontSize: 13))),
+                            ],
+                          ),
+                          if (r.form.isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                const SizedBox(width: 30),
+                                Row(children: r.form.map(_miniFormDot).toList()),
+                                const Spacer(),
+                                const Text('Profil ›', style: TextStyle(fontSize: 10, color: Colors.white38)),
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   );
                 },
@@ -2511,6 +2816,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
   DateTime _updatedAt = DateTime.now();
   bool _loadingDetails = false;
   bool _fromCache = false;
+  String _eventFilter = 'all'; // 'all', 'goal', 'cards', 'sub'
   Timer? _autoTimer;
 
   @override
@@ -2585,8 +2891,14 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
   Widget build(BuildContext context) {
     final intervalSec = ApiConfig.isStatPal ? 15 : 30;
     final updClock = SportsApiService.formatClock(_updatedAt);
-    final sortedEvents = List<MatchEvent>.of(_match.events)
-      ..sort((a, b) => a.minuteSortValue.compareTo(b.minuteSortValue));
+    final sortedEvents = (List<MatchEvent>.of(_match.events)
+          ..sort((a, b) => a.minuteSortValue.compareTo(b.minuteSortValue)))
+        .where((ev) {
+      if (_eventFilter == 'goal') return ev.type == 'goal';
+      if (_eventFilter == 'cards') return ev.type == 'yellow' || ev.type == 'red';
+      if (_eventFilter == 'sub') return ev.type == 'sub';
+      return true;
+    }).toList();
 
     final homeAcc = _shotAccuracy(_match.shotsOnTargetHome, _match.shotsHome);
     final awayAcc = _shotAccuracy(_match.shotsOnTargetAway, _match.shotsAway);
@@ -2683,170 +2995,168 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
               ),
             ),
             if (_match.detailNote != null)
-              Container(
-                width: double.infinity,
-                margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF00B0FF).withAlpha(30),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFF00B0FF).withAlpha(100)),
-                ),
-                child: Text(
-                  _match.detailNote!,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 11, color: Colors.white70),
-                ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Text(_match.detailNote!, style: const TextStyle(fontSize: 11.5, color: Colors.amberAccent), textAlign: TextAlign.center),
               ),
             const TabBar(
-              isScrollable: true,
               indicatorColor: Color(0xFF00E676),
               labelColor: Color(0xFF00E676),
               unselectedLabelColor: Colors.white60,
               tabs: [
-                Tab(text: 'Statisztika & H2H'),
+                Tab(text: 'Statisztika'),
                 Tab(text: 'Idővonal'),
-                Tab(text: 'Kezdőcsapatok'),
-                Tab(text: 'Összefoglalók 🎬'),
+                Tab(text: 'Felállás'),
+                Tab(text: 'Videók'),
               ],
             ),
             Expanded(
               child: TabBarView(
                 children: [
                   ListView(
-                    padding: const EdgeInsets.all(18),
+                    padding: const EdgeInsets.all(16),
                     children: [
-                      _statBar('Labdabirtoklás (%)', _match.possessionHome, 100 - _match.possessionHome, _match.homeColor, _match.awayColor),
-                      _statBar('Támadási aktivitás', homeAttackIndex, awayAttackIndex, _match.homeColor, _match.awayColor),
-                      _statBar('Összes lövés', _match.shotsHome, _match.shotsAway, _match.homeColor, _match.awayColor),
-                      _statBar('Kapura lövések', _match.shotsOnTargetHome, _match.shotsOnTargetAway, _match.homeColor, _match.awayColor),
-                      _statBar('Kapura tartó pontosság (%)', homeAcc, awayAcc, _match.homeColor, _match.awayColor),
-                      _statBar('Szögletek', _match.cornersHome, _match.cornersAway, _match.homeColor, _match.awayColor),
-                      _statBar('Szabálytalanságok', _match.foulsHome, _match.foulsAway, _match.homeColor, _match.awayColor),
+                      _statBar('Labdabirtoklás (%)', _match.possessionHome, 100 - _match.possessionHome),
+                      _statBar('Összes lövés', _match.shotsHome, _match.shotsAway),
+                      _statBar('Kaput eltaláló lövés', _match.shotsOnTargetHome, _match.shotsOnTargetAway),
+                      _statBar('Lövési pontosság (%)', homeAcc, awayAcc),
+                      _statBar('Támadási index', homeAttackIndex, awayAttackIndex),
+                      _statBar('Szögletek', _match.cornersHome, _match.cornersAway),
+                      _statBar('Szabálytalanságok', _match.foulsHome, _match.foulsAway),
                       if (_match.h2hFixtures.isNotEmpty) ...[
-                        const Divider(color: Colors.white12, height: 20),
-                        const Text('Egymás elleni mérkőzések (H2H)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        const SizedBox(height: 12),
+                        const Text('Egymás elleni meccsek (H2H)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                         const SizedBox(height: 8),
                         ..._match.h2hFixtures.map((h) => Container(
-                              margin: const EdgeInsets.only(bottom: 8),
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              margin: const EdgeInsets.only(bottom: 6),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
                               decoration: BoxDecoration(color: const Color(0xFF1C2541), borderRadius: BorderRadius.circular(12)),
                               child: Row(
                                 children: [
                                   Text(h.dateLabel, style: const TextStyle(fontSize: 11, color: Colors.white54)),
-                                  const SizedBox(width: 10),
-                                  Expanded(child: Text('${h.homeTeam} - ${h.awayTeam}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
-                                  Text(h.scoreLabel, style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF00E676))),
+                                  const SizedBox(width: 8),
+                                  Expanded(child: Text('${h.homeTeam} - ${h.awayTeam}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
+                                  Text(h.scoreLabel, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Color(0xFF00E676))),
                                 ],
                               ),
                             )),
                       ],
                     ],
                   ),
-                  sortedEvents.isEmpty
-                      ? const Center(child: Text('Még nincs rögzített idővonal-esemény ehhez a meccshez.', style: TextStyle(color: Colors.white60)))
-                      : ListView.builder(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: sortedEvents.length,
-                          itemBuilder: (context, i) {
-                            final ev = sortedEvents[i];
-                            return Container(
-                              margin: const EdgeInsets.only(bottom: 10),
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF1C2541),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border(
-                                  left: BorderSide(
-                                    color: ev.type == 'goal'
-                                        ? const Color(0xFF00E676)
-                                        : (ev.type == 'red' ? Colors.redAccent : const Color(0xFF00B0FF)),
-                                    width: 3,
-                                  ),
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: ev.isHome ? MainAxisAlignment.start : MainAxisAlignment.end,
-                                children: ev.isHome
-                                    ? [
-                                        Text(ev.minute, style: const TextStyle(color: Color(0xFF00E676), fontWeight: FontWeight.bold)),
-                                        const SizedBox(width: 8),
-                                        _eventIcon(ev.type),
-                                        const SizedBox(width: 8),
-                                        Flexible(child: Text(ev.player, style: const TextStyle(fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis)),
-                                      ]
-                                    : [
-                                        Flexible(child: Text(ev.player, style: const TextStyle(fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis)),
-                                        const SizedBox(width: 8),
-                                        _eventIcon(ev.type),
-                                        const SizedBox(width: 8),
-                                        Text(ev.minute, style: const TextStyle(color: Color(0xFF00E676), fontWeight: FontWeight.bold)),
-                                      ],
-                              ),
-                            );
-                          },
+                  Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                        child: Row(
+                          children: [
+                            _eventFilterChip('Mind', 'all'),
+                            const SizedBox(width: 6),
+                            _eventFilterChip('⚽ Gólok', 'goal'),
+                            const SizedBox(width: 6),
+                            _eventFilterChip('🟨/🟥 Lapok', 'cards'),
+                            const SizedBox(width: 6),
+                            _eventFilterChip('🔄 Cserék', 'sub'),
+                          ],
                         ),
+                      ),
+                      Expanded(
+                        child: sortedEvents.isEmpty
+                            ? const Center(child: Text('Nincs a szűrőnek megfelelő esemény.', style: TextStyle(color: Colors.white60)))
+                            : ListView.builder(
+                                padding: const EdgeInsets.all(16),
+                                itemCount: sortedEvents.length,
+                                itemBuilder: (context, idx) {
+                                  final ev = sortedEvents[idx];
+                                  final icon = ev.type == 'goal'
+                                      ? '⚽'
+                                      : (ev.type == 'red' ? '🟥' : (ev.type == 'sub' ? '🔄' : '🟨'));
+                                  return Container(
+                                    margin: const EdgeInsets.only(bottom: 10),
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                    decoration: BoxDecoration(color: const Color(0xFF1C2541), borderRadius: BorderRadius.circular(14)),
+                                    child: Row(
+                                      children: [
+                                        Text(ev.minute, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00E676))),
+                                        const SizedBox(width: 10),
+                                        Text(icon, style: const TextStyle(fontSize: 16)),
+                                        const SizedBox(width: 10),
+                                        Expanded(child: Text(ev.player, style: const TextStyle(fontWeight: FontWeight.w600))),
+                                        Text(ev.isHome ? _match.homeTeam : _match.awayTeam, style: const TextStyle(fontSize: 11, color: Colors.white60)),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
                   ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
                       if (_match.homeLineup != null)
-                        FormationPitchView(teamName: _match.homeTeam, accent: _match.homeColor, lineup: _match.homeLineup!),
+                        FormationPitchView(
+                          teamName: _match.homeTeam,
+                          accent: _match.homeColor,
+                          lineup: _match.homeLineup!,
+                        ),
                       if (_match.awayLineup != null)
-                        FormationPitchView(teamName: _match.awayTeam, accent: _match.awayColor, lineup: _match.awayLineup!),
-                      _lineupSection(_match.homeTeam, _match.homeColor, _match.homeLineup),
-                      const SizedBox(height: 16),
-                      _lineupSection(_match.awayTeam, _match.awayColor, _match.awayLineup),
+                        FormationPitchView(
+                          teamName: _match.awayTeam,
+                          accent: _match.awayColor,
+                          lineup: _match.awayLineup!,
+                        ),
+                      if (_match.homeLineup != null) ...[
+                        const SizedBox(height: 6),
+                        Text('${_match.homeTeam} – Kezdő (${_match.homeLineup!.formation})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        const SizedBox(height: 6),
+                        ..._match.homeLineup!.starters.map((p) => _lineupTile(p, _match.homeColor)),
+                        if (_match.homeLineup!.substitutes.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          const Text('Cserék', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: Colors.white70)),
+                          ..._match.homeLineup!.substitutes.map((p) => _lineupTile(p, Colors.blueGrey)),
+                        ],
+                      ],
+                      if (_match.awayLineup != null) ...[
+                        const SizedBox(height: 16),
+                        Text('${_match.awayTeam} – Kezdő (${_match.awayLineup!.formation})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        const SizedBox(height: 6),
+                        ..._match.awayLineup!.starters.map((p) => _lineupTile(p, _match.awayColor)),
+                        if (_match.awayLineup!.substitutes.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          const Text('Cserék', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: Colors.white70)),
+                          ..._match.awayLineup!.substitutes.map((p) => _lineupTile(p, Colors.blueGrey)),
+                        ],
+                      ],
                     ],
                   ),
                   _match.highlights.isEmpty
-                      ? Center(
+                      ? const Center(
                           child: Padding(
-                            padding: const EdgeInsets.all(24),
+                            padding: EdgeInsets.all(24),
                             child: Text(
-                              ApiConfig.isStatPal
-                                  ? 'A StatPal V2 élő állásokat és statisztikákat nyújt;\nvideós összefoglalókhoz válts Highlightly kulcsra a ⚙️ menüben.'
-                                  : 'Ehhez a mérkőzéshez még nem érhető el videós összefoglaló.',
+                              'Ehhez a mérkőzéshez még nincs elérhető videó összefoglaló.',
                               textAlign: TextAlign.center,
-                              style: const TextStyle(color: Colors.white60, height: 1.5),
+                              style: TextStyle(color: Colors.white60),
                             ),
                           ),
                         )
                       : ListView.builder(
                           padding: const EdgeInsets.all(16),
                           itemCount: _match.highlights.length,
-                          itemBuilder: (context, i) {
-                            final clip = _match.highlights[i];
-                            return Container(
+                          itemBuilder: (context, idx) {
+                            final clip = _match.highlights[idx];
+                            return Card(
+                              color: const Color(0xFF1C2541),
                               margin: const EdgeInsets.only(bottom: 12),
-                              decoration: BoxDecoration(color: const Color(0xFF1C2541), borderRadius: BorderRadius.circular(16)),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  if (clip.thumbnail != null && clip.thumbnail!.isNotEmpty)
-                                    ClipRRect(
-                                      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                                      child: Image.network(clip.thumbnail!, height: 170, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox()),
-                                    ),
-                                  Padding(
-                                    padding: const EdgeInsets.all(14),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(clip.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                                        const SizedBox(height: 10),
-                                        ElevatedButton.icon(
-                                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E676), foregroundColor: Colors.black),
-                                          onPressed: () {
-                                            Clipboard.setData(ClipboardData(text: clip.url));
-                                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Videó hivatkozás másolva a vágólapra!')));
-                                          },
-                                          icon: const Icon(Icons.copy, size: 18),
-                                          label: const Text('Hivatkozás másolása'),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
+                              child: ListTile(
+                                leading: const Icon(Icons.play_circle_fill, color: Color(0xFF00E676), size: 36),
+                                title: Text(clip.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                subtitle: Text(clip.url, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Color(0xFF00B0FF))),
+                                trailing: const Icon(Icons.copy, size: 18),
+                                onTap: () {
+                                  Clipboard.setData(ClipboardData(text: clip.url));
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Videó link másolva a vágólapra!')));
+                                },
                               ),
                             );
                           },
@@ -2860,84 +3170,59 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
     );
   }
 
-  Widget _lineupSection(String teamName, Color accent, TeamLineup? lineup) {
-    if (lineup == null || (lineup.starters.isEmpty && lineup.substitutes.isEmpty)) {
-      return Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: const Color(0xFF1C2541), borderRadius: BorderRadius.circular(14)),
-        child: Text('$teamName – nincs felállás adat.', style: const TextStyle(color: Colors.white60)),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1C2541),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: accent.withAlpha(80)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(teamName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(color: accent.withAlpha(35), borderRadius: BorderRadius.circular(8)),
-                child: Text(lineup.formation, style: TextStyle(color: accent, fontWeight: FontWeight.w900, fontSize: 12)),
-              ),
-            ],
+  Widget _eventFilterChip(String label, String key) {
+    final active = _eventFilter == key;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _eventFilter = key),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: active ? const Color(0xFF00E676) : const Color(0xFF1C2541),
+            borderRadius: BorderRadius.circular(10),
           ),
-          const SizedBox(height: 10),
-          const Text('Kezdőcsapat', style: TextStyle(fontSize: 11.5, color: Colors.white54, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 6),
-          ...lineup.starters.map((p) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 3),
-                child: Row(
-                  children: [
-                    SizedBox(width: 26, child: Text(p.number, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00E676), fontSize: 12))),
-                    Expanded(child: Text(p.name, style: const TextStyle(fontSize: 12.5))),
-                    Text(p.position, style: const TextStyle(fontSize: 11, color: Colors.white54)),
-                  ],
-                ),
-              )),
-          if (lineup.substitutes.isNotEmpty) ...[
-            const Divider(color: Colors.white12, height: 14),
-            const Text('Cserék', style: TextStyle(fontSize: 11.5, color: Colors.white54, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 6),
-            ...lineup.substitutes.map((p) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2.5),
-                  child: Row(
-                    children: [
-                      SizedBox(width: 26, child: Text(p.number, style: const TextStyle(color: Colors.white60, fontSize: 11.5))),
-                      Expanded(child: Text(p.name, style: const TextStyle(fontSize: 12, color: Colors.white70))),
-                      Text(p.position, style: const TextStyle(fontSize: 10.5, color: Colors.white38)),
-                    ],
-                  ),
-                )),
-          ],
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w800,
+              color: active ? Colors.black : Colors.white70,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _lineupTile(LineupPlayer p, Color badgeColor) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(color: const Color(0xFF1C2541), borderRadius: BorderRadius.circular(10)),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 12,
+            backgroundColor: badgeColor,
+            child: Text(
+              p.number.isNotEmpty ? p.number : '•',
+              style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
+          if (p.position.isNotEmpty)
+            Text(p.position, style: const TextStyle(fontSize: 11, color: Colors.white54, fontWeight: FontWeight.bold)),
         ],
       ),
     );
   }
 
-  Widget _eventIcon(String type) {
-    if (type == 'yellow') {
-      return Container(width: 14, height: 18, decoration: BoxDecoration(color: Colors.amber, borderRadius: BorderRadius.circular(3)));
-    }
-    if (type == 'red') {
-      return Container(width: 14, height: 18, decoration: BoxDecoration(color: Colors.redAccent, borderRadius: BorderRadius.circular(3)));
-    }
-    if (type == 'sub') {
-      return const Icon(Icons.swap_horiz, color: Color(0xFF00B0FF), size: 18);
-    }
-    return const Icon(Icons.sports_soccer, color: Color(0xFF00E676), size: 18);
-  }
-
-  Widget _statBar(String title, int homeVal, int awayVal, Color c1, Color c2) {
+  Widget _statBar(String label, int homeVal, int awayVal) {
     final total = (homeVal + awayVal) == 0 ? 1 : (homeVal + awayVal);
+    final homeRatio = homeVal / total;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Column(
@@ -2946,19 +3231,27 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('$homeVal', style: const TextStyle(fontWeight: FontWeight.bold)),
-              Text(title, style: const TextStyle(color: Colors.white70)),
+              Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
               Text('$awayVal', style: const TextStyle(fontWeight: FontWeight.bold)),
             ],
           ),
           const SizedBox(height: 6),
           ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: Row(
-              children: [
-                Expanded(flex: (homeVal * 100 ~/ total).clamp(5, 95), child: Container(height: 10, color: c1)),
-                const SizedBox(width: 4),
-                Expanded(flex: (awayVal * 100 ~/ total).clamp(5, 95), child: Container(height: 10, color: c2)),
-              ],
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              height: 10,
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: (homeRatio * 1000).round().clamp(1, 999),
+                    child: Container(color: const Color(0xFF00E676)),
+                  ),
+                  Expanded(
+                    flex: ((1 - homeRatio) * 1000).round().clamp(1, 999),
+                    child: Container(color: const Color(0xFF00B0FF)),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
