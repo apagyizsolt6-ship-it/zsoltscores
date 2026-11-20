@@ -918,7 +918,9 @@ class MatchCard extends StatelessWidget {
     final awayFavTeam = DisplayPrefs.isFavoriteTeam(match.awayTeam);
     final hasFavTeam = homeFavTeam || awayFavTeam;
 
-    final keyEvents = match.events.where((e) => e.type == 'goal' || e.type == 'red').toList();
+    final keyEvents = match.events
+        .where((e) => e.type == 'goal' || e.type == 'red' || e.type == 'yellow' || e.type == 'sub')
+        .toList();
 
     return InkWell(
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MatchStatsScreen(match: match))),
@@ -1083,27 +1085,36 @@ class MatchCard extends StatelessWidget {
                   runSpacing: 5,
                   children: keyEvents.map((ev) {
                     final isRed = ev.type == 'red';
+                    final isYellow = ev.type == 'yellow';
+                    final isSub = ev.type == 'sub';
+                    final icon = isRed ? '🟥' : (isYellow ? '🟨' : (isSub ? '🔄' : '⚽'));
                     return Container(
                       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                       decoration: BoxDecoration(
                         color: isRed
                             ? p.liveRed.withAlpha(32)
-                            : Colors.white.withAlpha(12),
+                            : (isYellow
+                                ? p.goldAccent.withAlpha(22)
+                                : Colors.white.withAlpha(12)),
                         borderRadius: BorderRadius.circular(7),
                         border: Border.all(
-                          color: isRed ? p.liveRed.withAlpha(110) : Colors.white12,
+                          color: isRed
+                              ? p.liveRed.withAlpha(110)
+                              : (isYellow ? p.goldAccent.withAlpha(90) : Colors.white12),
                         ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(isRed ? '🟥' : '⚽', style: const TextStyle(fontSize: 10)),
+                          Text(icon, style: const TextStyle(fontSize: 10)),
                           const SizedBox(width: 4),
                           Text(
                             '${ev.player} ${ev.minute}',
                             style: TextStyle(
                               fontSize: 10.5,
-                              color: isRed ? const Color(0xFFFF8A80) : Colors.white70,
+                              color: isRed
+                                  ? const Color(0xFFFF8A80)
+                                  : (isYellow ? const Color(0xFFFFE082) : Colors.white70),
                               fontWeight: FontWeight.w600,
                             ),
                           ),
