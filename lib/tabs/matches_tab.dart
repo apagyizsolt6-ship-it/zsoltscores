@@ -523,7 +523,7 @@ class _MatchesTabState extends State<MatchesTab> {
 
           if (liveMatches.isNotEmpty)
             SizedBox(
-              height: 58,
+              height: 62,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 2),
@@ -533,23 +533,38 @@ class _MatchesTabState extends State<MatchesTab> {
                   return Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: InkWell(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(13),
                       onTap: () => Navigator.push(ctx, MaterialPageRoute(builder: (_) => MatchStatsScreen(match: lm))),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
                         decoration: BoxDecoration(
-                          color: p.cardElevated,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: p.primaryAccent.withAlpha(110)),
+                          gradient: LinearGradient(
+                            colors: [
+                              p.primaryAccent.withAlpha(24),
+                              p.cardElevated,
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(13),
+                          border: Border.all(color: p.primaryAccent.withAlpha(120)),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(lm.status, style: const TextStyle(color: Color(0xFFFF5252), fontWeight: FontWeight.w900, fontSize: 11)),
-                            const SizedBox(width: 7),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: p.liveRed,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                lm.status,
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10.5),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
                             Text(
-                              '${lm.homeTeam} ${lm.homeScore}-${lm.awayScore} ${lm.awayTeam}',
-                              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+                              '${lm.homeTeam}  ${lm.homeScore} - ${lm.awayScore}  ${lm.awayTeam}',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
                             ),
                           ],
                         ),
