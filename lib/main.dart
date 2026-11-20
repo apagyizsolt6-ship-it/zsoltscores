@@ -6,6 +6,7 @@ import 'package:zsoltscores/services/live_alert_service.dart';
 import 'package:zsoltscores/tabs/favorites_tab.dart';
 import 'package:zsoltscores/tabs/matches_tab.dart';
 import 'package:zsoltscores/tabs/standings_tab.dart';
+import 'package:zsoltscores/theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -13,6 +14,7 @@ Future<void> main() async {
   await ApiCache.loadStats();
   await DisplayPrefs.load();
   await LogoCache.init();
+  await AppThemeController.instance.load();
   runApp(const ZsoltScoresApp());
 }
 
@@ -21,20 +23,16 @@ class ZsoltScoresApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'zsoltscores',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF0B132B),
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF00E676),
-          secondary: Color(0xFF00B0FF),
-          surface: Color(0xFF1C2541),
-        ),
-        useMaterial3: true,
-      ),
-      home: const MainShell(),
+    return ListenableBuilder(
+      listenable: AppThemeController.instance,
+      builder: (context, _) {
+        return MaterialApp(
+          title: 'zsoltscores',
+          debugShowCheckedModeBanner: false,
+          theme: AppThemeController.instance.buildTheme(),
+          home: const MainShell(),
+        );
+      },
     );
   }
 }
@@ -210,16 +208,17 @@ class _MainShellState extends State<MainShell> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) {
+          final p = AppThemeController.instance.palette;
           final isSp = tempProvider == ApiProvider.statpal;
           final activeCtrl = isSp ? spController : hlController;
 
           return AlertDialog(
-            backgroundColor: const Color(0xFF1C2541),
-            title: const Row(
+            backgroundColor: p.cardElevated,
+            title: Row(
               children: [
-                Icon(Icons.vpn_key, color: Color(0xFF00E676)),
-                SizedBox(width: 8),
-                Text('Beállítások és Gyorsítótár', style: TextStyle(fontSize: 17)),
+                Icon(Icons.vpn_key, color: p.primaryAccent),
+                const SizedBox(width: 8),
+                const Text('Beállítások és Gyorsítótár', style: TextStyle(fontSize: 17)),
               ],
             ),
             content: SingleChildScrollView(
@@ -227,6 +226,48 @@ class _MainShellState extends State<MainShell> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  const Text('Megjelenés / Színvilág:', style: TextStyle(fontSize: 12, color: Colors.white70)),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Center(child: Text('Klasszikus sötét', style: TextStyle(fontSize: 11.5))),
+                          selected: !AppThemeController.instance.isOled,
+                          selectedColor: const Color(0xFF00E676),
+                          backgroundColor: p.scaffoldBg,
+                          labelStyle: TextStyle(
+                            color: !AppThemeController.instance.isOled ? Colors.black : Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          onSelected: (_) async {
+                            await AppThemeController.instance.setStyle(ZsoltThemeStyle.classicDark);
+                            setDialogState(() {});
+                            setState(() => _settingsVersion++);
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Center(child: Text('OLED Éjszakai', style: TextStyle(fontSize: 11.5))),
+                          selected: AppThemeController.instance.isOled,
+                          selectedColor: const Color(0xFF38BDF8),
+                          backgroundColor: Colors.black,
+                          labelStyle: TextStyle(
+                            color: AppThemeController.instance.isOled ? Colors.black : Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          onSelected: (_) async {
+                            await AppThemeController.instance.setStyle(ZsoltThemeStyle.oledMidnight);
+                            setDialogState(() {});
+                            setState(() => _settingsVersion++);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Divider(color: Colors.white12, height: 18),
                   const Text('Aktív adatforrás:', style: TextStyle(fontSize: 12, color: Colors.white70)),
                   const SizedBox(height: 8),
                   Row(
@@ -235,8 +276,8 @@ class _MainShellState extends State<MainShell> {
                         child: ChoiceChip(
                           label: const Center(child: Text('Highlightly', style: TextStyle(fontSize: 12))),
                           selected: !isSp,
-                          selectedColor: const Color(0xFF00E676),
-                          backgroundColor: const Color(0xFF0B132B),
+                          selectedColor: p.primaryAccent,
+                          backgroundColor: p.scaffoldBg,
                           labelStyle: TextStyle(
                             color: !isSp ? Colors.black : Colors.white,
                             fontWeight: FontWeight.bold,
@@ -249,8 +290,8 @@ class _MainShellState extends State<MainShell> {
                         child: ChoiceChip(
                           label: const Center(child: Text('StatPal V2', style: TextStyle(fontSize: 12))),
                           selected: isSp,
-                          selectedColor: const Color(0xFF00B0FF),
-                          backgroundColor: const Color(0xFF0B132B),
+                          selectedColor: p.secondaryAccent,
+                          backgroundColor: p.scaffoldBg,
                           labelStyle: TextStyle(
                             color: isSp ? Colors.black : Colors.white,
                             fontWeight: FontWeight.bold,
@@ -271,10 +312,10 @@ class _MainShellState extends State<MainShell> {
                     decoration: InputDecoration(
                       hintText: isSp ? 'Illeszd be a StatPal kulcsot...' : 'Illeszd be a Highlightly kulcsot...',
                       filled: true,
-                      fillColor: const Color(0xFF0B132B),
+                      fillColor: p.scaffoldBg,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       suffixIcon: IconButton(
-                        icon: const Icon(Icons.content_paste, color: Color(0xFF00B0FF)),
+                        icon: Icon(Icons.content_paste, color: p.secondaryAccent),
                         onPressed: () async {
                           final data = await Clipboard.getData(Clipboard.kTextPlain);
                           if (data?.text != null && data!.text!.trim().isNotEmpty) {
@@ -301,9 +342,9 @@ class _MainShellState extends State<MainShell> {
                       width: double.infinity,
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF00B0FF).withAlpha(25),
+                        color: p.secondaryAccent.withAlpha(25),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFF00B0FF).withAlpha(90)),
+                        border: Border.all(color: p.secondaryAccent.withAlpha(90)),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -326,7 +367,7 @@ class _MainShellState extends State<MainShell> {
                                         checkingUsage = false;
                                       });
                                     },
-                              icon: const Icon(Icons.analytics_outlined, size: 16, color: Color(0xFF00E676)),
+                              icon: Icon(Icons.analytics_outlined, size: 16, color: p.primaryAccent),
                               label: Text(
                                 checkingUsage ? 'Lekérdezés...' : 'Mai StatPal keret ellenőrzése (ingyenes)',
                                 style: const TextStyle(fontSize: 11),
@@ -337,7 +378,7 @@ class _MainShellState extends State<MainShell> {
                             const SizedBox(height: 4),
                             Text(
                               usageInfo!,
-                              style: const TextStyle(fontSize: 11, color: Color(0xFF00E676), fontWeight: FontWeight.bold),
+                              style: TextStyle(fontSize: 11, color: p.primaryAccent, fontWeight: FontWeight.bold),
                             ),
                           ],
                         ],
@@ -381,7 +422,7 @@ class _MainShellState extends State<MainShell> {
                     width: double.infinity,
                     child: OutlinedButton.icon(
                       onPressed: () => LiveAlertService.showTestAlert(context),
-                      icon: const Icon(Icons.notifications_active_outlined, size: 16, color: Color(0xFFFFAB00)),
+                      icon: Icon(Icons.notifications_active_outlined, size: 16, color: p.goldAccent),
                       label: const Text('Próbaértesítés küldése', style: TextStyle(fontSize: 12)),
                     ),
                   ),
@@ -393,7 +434,7 @@ class _MainShellState extends State<MainShell> {
                     decoration: InputDecoration(
                       hintText: 'pl. Ferencváros, Liverpool, Real Madrid',
                       filled: true,
-                      fillColor: const Color(0xFF0B132B),
+                      fillColor: p.scaffoldBg,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                   ),
@@ -407,8 +448,8 @@ class _MainShellState extends State<MainShell> {
                       ChoiceChip(
                         label: const Text('Élő / Kitűzött nyitva', style: TextStyle(fontSize: 11)),
                         selected: tempCollapseMode == CollapseMode.liveOrPinned,
-                        selectedColor: const Color(0xFF00E676),
-                        backgroundColor: const Color(0xFF0B132B),
+                        selectedColor: p.primaryAccent,
+                        backgroundColor: p.scaffoldBg,
                         labelStyle: TextStyle(
                           color: tempCollapseMode == CollapseMode.liveOrPinned ? Colors.black : Colors.white,
                           fontWeight: FontWeight.bold,
@@ -418,8 +459,8 @@ class _MainShellState extends State<MainShell> {
                       ChoiceChip(
                         label: const Text('Mind nyitva', style: TextStyle(fontSize: 11)),
                         selected: tempCollapseMode == CollapseMode.allExpanded,
-                        selectedColor: const Color(0xFF00B0FF),
-                        backgroundColor: const Color(0xFF0B132B),
+                        selectedColor: p.secondaryAccent,
+                        backgroundColor: p.scaffoldBg,
                         labelStyle: TextStyle(
                           color: tempCollapseMode == CollapseMode.allExpanded ? Colors.black : Colors.white,
                           fontWeight: FontWeight.bold,
@@ -430,7 +471,7 @@ class _MainShellState extends State<MainShell> {
                         label: const Text('Mind csukva', style: TextStyle(fontSize: 11)),
                         selected: tempCollapseMode == CollapseMode.allCollapsed,
                         selectedColor: Colors.amberAccent,
-                        backgroundColor: const Color(0xFF0B132B),
+                        backgroundColor: p.scaffoldBg,
                         labelStyle: TextStyle(
                           color: tempCollapseMode == CollapseMode.allCollapsed ? Colors.black : Colors.white,
                           fontWeight: FontWeight.bold,
@@ -453,8 +494,8 @@ class _MainShellState extends State<MainShell> {
                           return ChoiceChip(
                             label: Text('$min p', style: const TextStyle(fontSize: 11)),
                             selected: selected,
-                            selectedColor: const Color(0xFF00B0FF),
-                            backgroundColor: const Color(0xFF0B132B),
+                            selectedColor: p.secondaryAccent,
+                            backgroundColor: p.scaffoldBg,
                             labelStyle: TextStyle(
                               color: selected ? Colors.black : Colors.white,
                               fontWeight: FontWeight.bold,
@@ -469,7 +510,7 @@ class _MainShellState extends State<MainShell> {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF0B132B),
+                      color: p.scaffoldBg,
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Row(
@@ -483,13 +524,13 @@ class _MainShellState extends State<MainShell> {
                         ),
                         Column(
                           children: [
-                            Text('${ApiCache.savedRequests}', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00E676), fontSize: 15)),
+                            Text('${ApiCache.savedRequests}', style: TextStyle(fontWeight: FontWeight.bold, color: p.primaryAccent, fontSize: 15)),
                             const Text('Megspórolt', style: TextStyle(fontSize: 10, color: Colors.white60)),
                           ],
                         ),
                         Column(
                           children: [
-                            Text('${LogoCache.savedLogosCount}', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00B0FF), fontSize: 15)),
+                            Text('${LogoCache.savedLogosCount}', style: TextStyle(fontWeight: FontWeight.bold, color: p.secondaryAccent, fontSize: 15)),
                             const Text('Mentett logó', style: TextStyle(fontSize: 10, color: Colors.white60)),
                           ],
                         ),
@@ -510,7 +551,7 @@ class _MainShellState extends State<MainShell> {
                           );
                         }
                       },
-                      icon: const Icon(Icons.delete_sweep, size: 18, color: Color(0xFF00B0FF)),
+                      icon: Icon(Icons.delete_sweep, size: 18, color: p.secondaryAccent),
                       label: const Text('Adat- és logótároló törlése', style: TextStyle(fontSize: 12)),
                     ),
                   ),
@@ -545,7 +586,7 @@ class _MainShellState extends State<MainShell> {
                 ),
               TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Mégse')),
               FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: const Color(0xFF00E676)),
+                style: FilledButton.styleFrom(backgroundColor: p.primaryAccent),
                 onPressed: () async {
                   await ApiConfig.save(
                     newProvider: tempProvider,
@@ -578,6 +619,7 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
+    final p = AppThemeController.instance.palette;
     final pages = [
       MatchesTab(
         key: ValueKey('matches_$_settingsVersion'),
@@ -614,19 +656,19 @@ class _MainShellState extends State<MainShell> {
     return Scaffold(
       body: pages[_selectedIndex],
       bottomNavigationBar: NavigationBar(
-        backgroundColor: const Color(0xFF1C2541),
-        indicatorColor: const Color(0xFF00E676).withAlpha(55),
+        backgroundColor: p.cardElevated,
+        indicatorColor: p.primaryAccent.withAlpha(55),
         selectedIndex: _selectedIndex,
         onDestinationSelected: (idx) => setState(() => _selectedIndex = idx),
         destinations: [
-          const NavigationDestination(
-            icon: Icon(Icons.sports_soccer_outlined),
-            selectedIcon: Icon(Icons.sports_soccer, color: Color(0xFF00E676)),
+          NavigationDestination(
+            icon: const Icon(Icons.sports_soccer_outlined),
+            selectedIcon: Icon(Icons.sports_soccer, color: p.primaryAccent),
             label: 'Meccsek',
           ),
-          const NavigationDestination(
-            icon: Icon(Icons.leaderboard_outlined),
-            selectedIcon: Icon(Icons.leaderboard, color: Color(0xFF00B0FF)),
+          NavigationDestination(
+            icon: const Icon(Icons.leaderboard_outlined),
+            selectedIcon: Icon(Icons.leaderboard, color: p.secondaryAccent),
             label: 'Tabella',
           ),
           NavigationDestination(
@@ -635,7 +677,7 @@ class _MainShellState extends State<MainShell> {
               isLabelVisible: _favoriteIds.isNotEmpty,
               child: const Icon(Icons.star_border),
             ),
-            selectedIcon: const Icon(Icons.star, color: Color(0xFFFFAB00)),
+            selectedIcon: Icon(Icons.star, color: p.goldAccent),
             label: 'Kedvencek',
           ),
         ],
