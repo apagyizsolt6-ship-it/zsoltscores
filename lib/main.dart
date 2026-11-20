@@ -186,6 +186,33 @@ class _MainShellState extends State<MainShell> {
     }
   }
 
+  Widget _settingsSectionCard({
+    required AppPalette p,
+    required String title,
+    required List<Widget> children,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: p.cardBg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: p.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: p.primaryAccent),
+          ),
+          const SizedBox(height: 8),
+          ...children,
+        ],
+      ),
+    );
+  }
+
   void _openApiSettingsDialog() async {
     await LogoCache.refreshCount();
     if (!mounted) return;
@@ -226,334 +253,353 @@ class _MainShellState extends State<MainShell> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Megjelenés / Színvilág:', style: TextStyle(fontSize: 12, color: Colors.white70)),
-                  const SizedBox(height: 8),
-                  Row(
+                  _settingsSectionCard(
+                    p: p,
+                    title: 'Megjelenés / Színvilág',
                     children: [
-                      Expanded(
-                        child: ChoiceChip(
-                          label: const Center(child: Text('Klasszikus sötét', style: TextStyle(fontSize: 11.5))),
-                          selected: !AppThemeController.instance.isOled,
-                          selectedColor: const Color(0xFF00E676),
-                          backgroundColor: p.scaffoldBg,
-                          labelStyle: TextStyle(
-                            color: !AppThemeController.instance.isOled ? Colors.black : Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          onSelected: (_) async {
-                            await AppThemeController.instance.setStyle(ZsoltThemeStyle.classicDark);
-                            setDialogState(() {});
-                            setState(() => _settingsVersion++);
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: ChoiceChip(
-                          label: const Center(child: Text('OLED Éjszakai', style: TextStyle(fontSize: 11.5))),
-                          selected: AppThemeController.instance.isOled,
-                          selectedColor: const Color(0xFF38BDF8),
-                          backgroundColor: Colors.black,
-                          labelStyle: TextStyle(
-                            color: AppThemeController.instance.isOled ? Colors.black : Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          onSelected: (_) async {
-                            await AppThemeController.instance.setStyle(ZsoltThemeStyle.oledMidnight);
-                            setDialogState(() {});
-                            setState(() => _settingsVersion++);
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Divider(color: Colors.white12, height: 18),
-                  const Text('Aktív adatforrás:', style: TextStyle(fontSize: 12, color: Colors.white70)),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ChoiceChip(
-                          label: const Center(child: Text('Highlightly', style: TextStyle(fontSize: 12))),
-                          selected: !isSp,
-                          selectedColor: p.primaryAccent,
-                          backgroundColor: p.scaffoldBg,
-                          labelStyle: TextStyle(
-                            color: !isSp ? Colors.black : Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          onSelected: (_) => setDialogState(() => tempProvider = ApiProvider.highlightly),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: ChoiceChip(
-                          label: const Center(child: Text('StatPal V2', style: TextStyle(fontSize: 12))),
-                          selected: isSp,
-                          selectedColor: p.secondaryAccent,
-                          backgroundColor: p.scaffoldBg,
-                          labelStyle: TextStyle(
-                            color: isSp ? Colors.black : Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          onSelected: (_) => setDialogState(() => tempProvider = ApiProvider.statpal),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    isSp ? 'StatPal.io hozzáférési kulcs (UUID):' : 'Highlightly API kulcs:',
-                    style: const TextStyle(fontSize: 12, color: Colors.white70),
-                  ),
-                  const SizedBox(height: 6),
-                  TextField(
-                    controller: activeCtrl,
-                    decoration: InputDecoration(
-                      hintText: isSp ? 'Illeszd be a StatPal kulcsot...' : 'Illeszd be a Highlightly kulcsot...',
-                      filled: true,
-                      fillColor: p.scaffoldBg,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      suffixIcon: IconButton(
-                        icon: Icon(Icons.content_paste, color: p.secondaryAccent),
-                        onPressed: () async {
-                          final data = await Clipboard.getData(Clipboard.kTextPlain);
-                          if (data?.text != null && data!.text!.trim().isNotEmpty) {
-                            setDialogState(() => activeCtrl.text = data.text!.trim());
-                          }
-                        },
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  if (!isSp)
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('RapidAPI végpont használata', style: TextStyle(fontSize: 13)),
-                      subtitle: Text(
-                        tempRapid ? 'football-highlights-api.p.rapidapi.com' : 'soccer.highlightly.net',
-                        style: const TextStyle(fontSize: 11, color: Colors.white54),
-                      ),
-                      value: tempRapid,
-                      onChanged: (val) => setDialogState(() => tempRapid = val),
-                    )
-                  else ...[
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: p.secondaryAccent.withAlpha(25),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: p.secondaryAccent.withAlpha(90)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      Row(
                         children: [
-                          const Text(
-                            'statpal.io/api/v2/soccer • 15 mp-es élő frissítés',
-                            style: TextStyle(fontSize: 11, color: Colors.white70),
-                          ),
-                          const SizedBox(height: 6),
-                          SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton.icon(
-                              onPressed: checkingUsage
-                                  ? null
-                                  : () async {
-                                      setDialogState(() => checkingUsage = true);
-                                      final info = await SportsApiService.fetchStatPalDailyUsage(spController.text);
-                                      setDialogState(() {
-                                        usageInfo = info;
-                                        checkingUsage = false;
-                                      });
-                                    },
-                              icon: Icon(Icons.analytics_outlined, size: 16, color: p.primaryAccent),
-                              label: Text(
-                                checkingUsage ? 'Lekérdezés...' : 'Mai StatPal keret ellenőrzése (ingyenes)',
-                                style: const TextStyle(fontSize: 11),
+                          Expanded(
+                            child: ChoiceChip(
+                              label: const Center(child: Text('Klasszikus sötét', style: TextStyle(fontSize: 11.5))),
+                              selected: !AppThemeController.instance.isOled,
+                              selectedColor: const Color(0xFF00E676),
+                              backgroundColor: p.scaffoldBg,
+                              labelStyle: TextStyle(
+                                color: !AppThemeController.instance.isOled ? Colors.black : Colors.white,
+                                fontWeight: FontWeight.bold,
                               ),
+                              onSelected: (_) async {
+                                await AppThemeController.instance.setStyle(ZsoltThemeStyle.classicDark);
+                                setDialogState(() {});
+                                setState(() => _settingsVersion++);
+                              },
                             ),
                           ),
-                          if (usageInfo != null) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              usageInfo!,
-                              style: TextStyle(fontSize: 11, color: p.primaryAccent, fontWeight: FontWeight.bold),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: ChoiceChip(
+                              label: const Center(child: Text('OLED Éjszakai', style: TextStyle(fontSize: 11.5))),
+                              selected: AppThemeController.instance.isOled,
+                              selectedColor: const Color(0xFF38BDF8),
+                              backgroundColor: Colors.black,
+                              labelStyle: TextStyle(
+                                color: AppThemeController.instance.isOled ? Colors.black : Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              onSelected: (_) async {
+                                await AppThemeController.instance.setStyle(ZsoltThemeStyle.oledMidnight);
+                                setDialogState(() {});
+                                setState(() => _settingsVersion++);
+                              },
                             ),
-                          ],
+                          ),
                         ],
                       ),
-                    ),
-                  ],
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Élő követés (60 mp-es listafrissítés)', style: TextStyle(fontSize: 13)),
-                    subtitle: const Text(
-                      'Gól esetén zöld jelzés + kiemelt meccs riasztás',
-                      style: TextStyle(fontSize: 11, color: Colors.white54),
-                    ),
-                    value: tempAutoLiveList,
-                    onChanged: (val) => setDialogState(() => tempAutoLiveList = val),
+                    ],
                   ),
-                  const Divider(color: Colors.white12, height: 14),
-                  const Text('Értesítési típusok:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                  SwitchListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('⚽ Gól értesítés', style: TextStyle(fontSize: 12.5)),
-                    value: tempAlertGoal,
-                    onChanged: (v) => setDialogState(() => tempAlertGoal = v),
-                  ),
-                  SwitchListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('🟥 Piros lap értesítés', style: TextStyle(fontSize: 12.5)),
-                    value: tempAlertRed,
-                    onChanged: (v) => setDialogState(() => tempAlertRed = v),
-                  ),
-                  SwitchListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('🏁 Mérkőzés vége értesítés', style: TextStyle(fontSize: 12.5)),
-                    value: tempAlertEnd,
-                    onChanged: (v) => setDialogState(() => tempAlertEnd = v),
-                  ),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () => LiveAlertService.showTestAlert(context),
-                      icon: Icon(Icons.notifications_active_outlined, size: 16, color: p.goldAccent),
-                      label: const Text('Próbaértesítés küldése', style: TextStyle(fontSize: 12)),
-                    ),
-                  ),
-                  const Divider(color: Colors.white12, height: 16),
-                  const Text('Kedvenc csapatok (vesszővel elválasztva):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                  const SizedBox(height: 6),
-                  TextField(
-                    controller: favTeamsController,
-                    decoration: InputDecoration(
-                      hintText: 'pl. Ferencváros, Liverpool, Real Madrid',
-                      filled: true,
-                      fillColor: p.scaffoldBg,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                  const Divider(color: Colors.white12, height: 16),
-                  const Text('Bajnokságok kezdőállapota:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
+                  _settingsSectionCard(
+                    p: p,
+                    title: 'Aktív adatforrás',
                     children: [
-                      ChoiceChip(
-                        label: const Text('Élő / Kitűzött nyitva', style: TextStyle(fontSize: 11)),
-                        selected: tempCollapseMode == CollapseMode.liveOrPinned,
-                        selectedColor: p.primaryAccent,
-                        backgroundColor: p.scaffoldBg,
-                        labelStyle: TextStyle(
-                          color: tempCollapseMode == CollapseMode.liveOrPinned ? Colors.black : Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        onSelected: (_) => setDialogState(() => tempCollapseMode = CollapseMode.liveOrPinned),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ChoiceChip(
+                              label: const Center(child: Text('Highlightly', style: TextStyle(fontSize: 12))),
+                              selected: !isSp,
+                              selectedColor: p.primaryAccent,
+                              backgroundColor: p.scaffoldBg,
+                              labelStyle: TextStyle(
+                                color: !isSp ? Colors.black : Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              onSelected: (_) => setDialogState(() => tempProvider = ApiProvider.highlightly),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: ChoiceChip(
+                              label: const Center(child: Text('StatPal V2', style: TextStyle(fontSize: 12))),
+                              selected: isSp,
+                              selectedColor: p.secondaryAccent,
+                              backgroundColor: p.scaffoldBg,
+                              labelStyle: TextStyle(
+                                color: isSp ? Colors.black : Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              onSelected: (_) => setDialogState(() => tempProvider = ApiProvider.statpal),
+                            ),
+                          ),
+                        ],
                       ),
-                      ChoiceChip(
-                        label: const Text('Mind nyitva', style: TextStyle(fontSize: 11)),
-                        selected: tempCollapseMode == CollapseMode.allExpanded,
-                        selectedColor: p.secondaryAccent,
-                        backgroundColor: p.scaffoldBg,
-                        labelStyle: TextStyle(
-                          color: tempCollapseMode == CollapseMode.allExpanded ? Colors.black : Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        onSelected: (_) => setDialogState(() => tempCollapseMode = CollapseMode.allExpanded),
+                      const SizedBox(height: 10),
+                      Text(
+                        isSp ? 'StatPal.io hozzáférési kulcs (UUID):' : 'Highlightly API kulcs:',
+                        style: const TextStyle(fontSize: 12, color: Colors.white70),
                       ),
-                      ChoiceChip(
-                        label: const Text('Mind csukva', style: TextStyle(fontSize: 11)),
-                        selected: tempCollapseMode == CollapseMode.allCollapsed,
-                        selectedColor: Colors.amberAccent,
-                        backgroundColor: p.scaffoldBg,
-                        labelStyle: TextStyle(
-                          color: tempCollapseMode == CollapseMode.allCollapsed ? Colors.black : Colors.white,
-                          fontWeight: FontWeight.bold,
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: activeCtrl,
+                        decoration: InputDecoration(
+                          hintText: isSp ? 'Illeszd be a StatPal kulcsot...' : 'Illeszd be a Highlightly kulcsot...',
+                          filled: true,
+                          fillColor: p.scaffoldBg,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                          suffixIcon: IconButton(
+                            icon: Icon(Icons.content_paste, color: p.secondaryAccent),
+                            onPressed: () async {
+                              final data = await Clipboard.getData(Clipboard.kTextPlain);
+                              if (data?.text != null && data!.text!.trim().isNotEmpty) {
+                                setDialogState(() => activeCtrl.text = data.text!.trim());
+                              }
+                            },
+                          ),
                         ),
-                        onSelected: (_) => setDialogState(() => tempCollapseMode = CollapseMode.allCollapsed),
+                      ),
+                      const SizedBox(height: 6),
+                      if (!isSp)
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('RapidAPI végpont használata', style: TextStyle(fontSize: 13)),
+                          subtitle: Text(
+                            tempRapid ? 'football-highlights-api.p.rapidapi.com' : 'soccer.highlightly.net',
+                            style: const TextStyle(fontSize: 11, color: Colors.white54),
+                          ),
+                          value: tempRapid,
+                          onChanged: (val) => setDialogState(() => tempRapid = val),
+                        )
+                      else
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: p.secondaryAccent.withAlpha(25),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: p.secondaryAccent.withAlpha(90)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'statpal.io/api/v2/soccer • 15 mp-es élő frissítés',
+                                style: TextStyle(fontSize: 11, color: Colors.white70),
+                              ),
+                              const SizedBox(height: 6),
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: checkingUsage
+                                      ? null
+                                      : () async {
+                                          setDialogState(() => checkingUsage = true);
+                                          final info = await SportsApiService.fetchStatPalDailyUsage(spController.text);
+                                          setDialogState(() {
+                                            usageInfo = info;
+                                            checkingUsage = false;
+                                          });
+                                        },
+                                  icon: Icon(Icons.analytics_outlined, size: 16, color: p.primaryAccent),
+                                  label: Text(
+                                    checkingUsage ? 'Lekérdezés...' : 'Mai StatPal keret ellenőrzése (ingyenes)',
+                                    style: const TextStyle(fontSize: 11),
+                                  ),
+                                ),
+                              ),
+                              if (usageInfo != null) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  usageInfo!,
+                                  style: TextStyle(fontSize: 11, color: p.primaryAccent, fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                  _settingsSectionCard(
+                    p: p,
+                    title: 'Élő frissítés és Értesítések',
+                    children: [
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Élő követés (60 mp-es listafrissítés)', style: TextStyle(fontSize: 13)),
+                        subtitle: const Text(
+                          'Gól esetén zöld jelzés + kiemelt meccs riasztás',
+                          style: TextStyle(fontSize: 11, color: Colors.white54),
+                        ),
+                        value: tempAutoLiveList,
+                        onChanged: (val) => setDialogState(() => tempAutoLiveList = val),
+                      ),
+                      SwitchListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('⚽ Gól értesítés', style: TextStyle(fontSize: 12.5)),
+                        value: tempAlertGoal,
+                        onChanged: (v) => setDialogState(() => tempAlertGoal = v),
+                      ),
+                      SwitchListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('🟥 Piros lap értesítés', style: TextStyle(fontSize: 12.5)),
+                        value: tempAlertRed,
+                        onChanged: (v) => setDialogState(() => tempAlertRed = v),
+                      ),
+                      SwitchListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('🏁 Mérkőzés vége értesítés', style: TextStyle(fontSize: 12.5)),
+                        value: tempAlertEnd,
+                        onChanged: (v) => setDialogState(() => tempAlertEnd = v),
+                      ),
+                      const SizedBox(height: 4),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () => LiveAlertService.showTestAlert(context),
+                          icon: Icon(Icons.notifications_active_outlined, size: 16, color: p.goldAccent),
+                          label: const Text('Próbaértesítés küldése', style: TextStyle(fontSize: 12)),
+                        ),
                       ),
                     ],
                   ),
-                  const Divider(color: Colors.white12, height: 18),
-                  const Text('Helyi tároló (API- és logókímélő)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  _settingsSectionCard(
+                    p: p,
+                    title: 'Kedvenc csapatok és Bajnokságok',
                     children: [
-                      const Text('Meccslista megőrzése:', style: TextStyle(fontSize: 12, color: Colors.white70)),
+                      const Text('Kedvenc csapatok (vesszővel elválasztva):', style: TextStyle(fontSize: 12, color: Colors.white70)),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: favTeamsController,
+                        decoration: InputDecoration(
+                          hintText: 'pl. Ferencváros, Liverpool, Real Madrid',
+                          filled: true,
+                          fillColor: p.scaffoldBg,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      const Text('Bajnokságok kezdőállapota:', style: TextStyle(fontSize: 12, color: Colors.white70)),
+                      const SizedBox(height: 6),
                       Wrap(
                         spacing: 6,
-                        children: [2, 5, 15].map((min) {
-                          final selected = tempTtl == min;
-                          return ChoiceChip(
-                            label: Text('$min p', style: const TextStyle(fontSize: 11)),
-                            selected: selected,
+                        runSpacing: 6,
+                        children: [
+                          ChoiceChip(
+                            label: const Text('Élő / Kitűzött nyitva', style: TextStyle(fontSize: 11)),
+                            selected: tempCollapseMode == CollapseMode.liveOrPinned,
+                            selectedColor: p.primaryAccent,
+                            backgroundColor: p.scaffoldBg,
+                            labelStyle: TextStyle(
+                              color: tempCollapseMode == CollapseMode.liveOrPinned ? Colors.black : Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            onSelected: (_) => setDialogState(() => tempCollapseMode = CollapseMode.liveOrPinned),
+                          ),
+                          ChoiceChip(
+                            label: const Text('Mind nyitva', style: TextStyle(fontSize: 11)),
+                            selected: tempCollapseMode == CollapseMode.allExpanded,
                             selectedColor: p.secondaryAccent,
                             backgroundColor: p.scaffoldBg,
                             labelStyle: TextStyle(
-                              color: selected ? Colors.black : Colors.white,
+                              color: tempCollapseMode == CollapseMode.allExpanded ? Colors.black : Colors.white,
                               fontWeight: FontWeight.bold,
                             ),
-                            onSelected: (_) => setDialogState(() => tempTtl = min),
-                          );
-                        }).toList(),
+                            onSelected: (_) => setDialogState(() => tempCollapseMode = CollapseMode.allExpanded),
+                          ),
+                          ChoiceChip(
+                            label: const Text('Mind csukva', style: TextStyle(fontSize: 11)),
+                            selected: tempCollapseMode == CollapseMode.allCollapsed,
+                            selectedColor: Colors.amberAccent,
+                            backgroundColor: p.scaffoldBg,
+                            labelStyle: TextStyle(
+                              color: tempCollapseMode == CollapseMode.allCollapsed ? Colors.black : Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            onSelected: (_) => setDialogState(() => tempCollapseMode = CollapseMode.allCollapsed),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: p.scaffoldBg,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        Column(
+                  _settingsSectionCard(
+                    p: p,
+                    title: 'Helyi tároló (API- és logókímélő)',
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Meccslista megőrzése:', style: TextStyle(fontSize: 12, color: Colors.white70)),
+                          Wrap(
+                            spacing: 6,
+                            children: [2, 5, 15].map((min) {
+                              final selected = tempTtl == min;
+                              return ChoiceChip(
+                                label: Text('$min p', style: const TextStyle(fontSize: 11)),
+                                selected: selected,
+                                selectedColor: p.secondaryAccent,
+                                backgroundColor: p.scaffoldBg,
+                                labelStyle: TextStyle(
+                                  color: selected ? Colors.black : Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                onSelected: (_) => setDialogState(() => tempTtl = min),
+                              );
+                            }).toList(),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: p.scaffoldBg,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
                           children: [
-                            Text('${ApiCache.networkRequests}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.amberAccent, fontSize: 15)),
-                            const Text('API kérés', style: TextStyle(fontSize: 10, color: Colors.white60)),
+                            Column(
+                              children: [
+                                Text('${ApiCache.networkRequests}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.amberAccent, fontSize: 15)),
+                                const Text('API kérés', style: TextStyle(fontSize: 10, color: Colors.white60)),
+                              ],
+                            ),
+                            Column(
+                              children: [
+                                Text('${ApiCache.savedRequests}', style: TextStyle(fontWeight: FontWeight.bold, color: p.primaryAccent, fontSize: 15)),
+                                const Text('Megspórolt', style: TextStyle(fontSize: 10, color: Colors.white60)),
+                              ],
+                            ),
+                            Column(
+                              children: [
+                                Text('${LogoCache.savedLogosCount}', style: TextStyle(fontWeight: FontWeight.bold, color: p.secondaryAccent, fontSize: 15)),
+                                const Text('Mentett logó', style: TextStyle(fontSize: 10, color: Colors.white60)),
+                              ],
+                            ),
                           ],
                         ),
-                        Column(
-                          children: [
-                            Text('${ApiCache.savedRequests}', style: TextStyle(fontWeight: FontWeight.bold, color: p.primaryAccent, fontSize: 15)),
-                            const Text('Megspórolt', style: TextStyle(fontSize: 10, color: Colors.white60)),
-                          ],
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final clearedJson = await ApiCache.clearAll();
+                            final clearedLogos = await LogoCache.clearAll();
+                            setDialogState(() {});
+                            if (ctx.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Gyorsítótár törölve ($clearedJson adat, $clearedLogos logó).')),
+                              );
+                            }
+                          },
+                          icon: Icon(Icons.delete_sweep, size: 18, color: p.secondaryAccent),
+                          label: const Text('Adat- és logótároló törlése', style: TextStyle(fontSize: 12)),
                         ),
-                        Column(
-                          children: [
-                            Text('${LogoCache.savedLogosCount}', style: TextStyle(fontWeight: FontWeight.bold, color: p.secondaryAccent, fontSize: 15)),
-                            const Text('Mentett logó', style: TextStyle(fontSize: 10, color: Colors.white60)),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () async {
-                        final clearedJson = await ApiCache.clearAll();
-                        final clearedLogos = await LogoCache.clearAll();
-                        setDialogState(() {});
-                        if (ctx.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Gyorsítótár törölve ($clearedJson adat, $clearedLogos logó).')),
-                          );
-                        }
-                      },
-                      icon: Icon(Icons.delete_sweep, size: 18, color: p.secondaryAccent),
-                      label: const Text('Adat- és logótároló törlése', style: TextStyle(fontSize: 12)),
-                    ),
+                      ),
+                    ],
                   ),
                 ],
               ),
