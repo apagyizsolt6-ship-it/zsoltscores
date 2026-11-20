@@ -69,6 +69,25 @@ class DisplayPrefs {
     await prefs.setStringList(_recentSearchesKey, recentSearches);
   }
 
+  static Future<void> clearRecentSearches() async {
+    recentSearches.clear();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_recentSearchesKey);
+  }
+
+  static Future<void> toggleFavoriteTeam(String teamName) async {
+    final clean = teamName.trim();
+    if (clean.isEmpty) return;
+    final existingIndex = favoriteTeams.indexWhere((t) => t.toLowerCase() == clean.toLowerCase());
+    if (existingIndex >= 0) {
+      favoriteTeams.removeAt(existingIndex);
+    } else {
+      favoriteTeams.insert(0, clean);
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_favTeamsKey, favoriteTeams);
+  }
+
   static bool isFavoriteTeam(String teamName) {
     final t = teamName.trim().toLowerCase();
     if (t.isEmpty) return false;
@@ -1133,9 +1152,15 @@ class StandingRow {
   final String? logo;
   final Color color;
   final int played;
+  final int won;
+  final int drawn;
+  final int lost;
+  final int gf;
+  final int ga;
   final int gd;
   final int points;
   final String zone;
+  final List<String> form;
 
   const StandingRow({
     required this.pos,
@@ -1143,9 +1168,15 @@ class StandingRow {
     this.logo,
     required this.color,
     required this.played,
+    this.won = 0,
+    this.drawn = 0,
+    this.lost = 0,
+    this.gf = 0,
+    this.ga = 0,
     required this.gd,
     required this.points,
     required this.zone,
+    this.form = const [],
   });
 }
 
@@ -1195,6 +1226,31 @@ class SportsApiService {
     final h = dt.hour.toString().padLeft(2, '0');
     final min = dt.minute.toString().padLeft(2, '0');
     return '$h:$min';
+  }
+
+  static List<String> _normalizeFormList(dynamic raw) {
+    if (raw == null) return const [];
+    final tokens = <String>[];
+    if (raw is List) {
+      for (final item in raw) {
+        tokens.add(item.toString().trim().toUpperCase());
+      }
+    } else {
+      final str = raw.toString().trim().toUpperCase();
+      if (str.contains(',') || str.contains('-')) {
+        tokens.addAll(str.split(RegExp(r'[,\-\s]+')).where((s) => s.isNotEmpty));
+      } else {
+        for (int i = 0; i < str.length; i++) {
+          tokens.add(str[i]);
+        }
+      }
+    }
+    return tokens.take(5).map((t) {
+      if (t == 'W' || t == 'GY' || t == '1') return 'GY';
+      if (t == 'D' || t == 'X') return 'D';
+      if (t == 'L' || t == 'V' || t == '2') return 'V';
+      return t;
+    }).where((t) => t == 'GY' || t == 'D' || t == 'V').toList();
   }
 
   static List<MatchData> _sortMatches(List<MatchData> list) {
@@ -2306,7 +2362,7 @@ class SportsApiService {
   }) async {
     if (!ApiConfig.hasValidKey) throw Exception('Nincs API kulcs');
 
-    final cacheKey = '${ApiConfig.providerTag}_standings_${leagueName}_$venueFilter';
+    final cacheKey = '${ApiConfig.providerTag}_standings_v2_${leagueName}_$venueFilter';
     if (!forceRefresh) {
       final cachedJson = await ApiCache.get(cacheKey, const Duration(hours: 2));
       if (cachedJson != null) {
@@ -2377,10 +2433,14 @@ class SportsApiService {
           : splitMap;
 
       final played = int.tryParse('${_attr(splitMap, ['gp', 'played', 'games', 'matches_played']) ?? 0}') ?? 0;
+      final won = int.tryParse('${_attr(splitMap, ['w', 'won', 'wins']) ?? 0}') ?? 0;
+      final drawn = int.tryParse('${_attr(splitMap, ['d', 'drawn', 'draws']) ?? 0}') ?? 0;
+      final lost = int.tryParse('${_attr(splitMap, ['l', 'lost', 'losses']) ?? 0}') ?? 0;
       final gf = int.tryParse('${_attr(splitMap, ['gs', 'gf', 'scored', 'goals_for']) ?? 0}') ?? 0;
       final ga = int.tryParse('${_attr(splitMap, ['ga', 'against', 'received', 'goals_against']) ?? 0}') ?? 0;
       final gd = int.tryParse('${_attr(total, ['gd', 'goal_difference']) ?? (gf - ga)}') ?? (gf - ga);
       final pts = int.tryParse('${_attr(total, ['p', 'pts', 'points']) ?? 0}') ?? 0;
+      final formList = _normalizeFormList(_attr(r, ['form', 'recent_form']) ?? _attr(splitMap, ['form']));
 
       String zone = 'none';
       if (pos >= 1 && pos <= 4) {
@@ -2397,9 +2457,15 @@ class SportsApiService {
         logo: LogoCache.normalizeUrl(_attr(teamObj, ['logo', 'image', 'badge', 'crest'])?.toString()),
         color: colorFromName(teamName),
         played: played,
+        won: won,
+        drawn: drawn,
+        lost: lost,
+        gf: gf,
+        ga: ga,
         gd: gd,
         points: pts,
         zone: zone,
+        form: formList,
       );
     }).toList();
 
@@ -2417,9 +2483,15 @@ class SportsApiService {
           logo: rows[i].logo,
           color: rows[i].color,
           played: rows[i].played,
+          won: rows[i].won,
+          drawn: rows[i].drawn,
+          lost: rows[i].lost,
+          gf: rows[i].gf,
+          ga: rows[i].ga,
           gd: rows[i].gd,
           points: rows[i].points,
           zone: i < 4 ? 'ucl' : (i < 6 ? 'uel' : 'none'),
+          form: rows[i].form,
         ),
       );
     }
@@ -2454,6 +2526,9 @@ class SportsApiService {
               : totalMap);
 
       final played = int.tryParse('${splitSource['games'] ?? splitSource['played'] ?? 0}') ?? 0;
+      final won = int.tryParse('${splitSource['wins'] ?? splitSource['won'] ?? 0}') ?? 0;
+      final drawn = int.tryParse('${splitSource['draws'] ?? splitSource['drawn'] ?? 0}') ?? 0;
+      final lost = int.tryParse('${splitSource['losses'] ?? splitSource['lost'] ?? 0}') ?? 0;
       final gf = int.tryParse('${splitSource['scoredGoals'] ?? splitSource['goalsFor'] ?? 0}') ?? 0;
       final ga = int.tryParse('${splitSource['receivedGoals'] ?? splitSource['goalsAgainst'] ?? 0}') ?? 0;
       final gd = venueFilter == 'all'
@@ -2462,6 +2537,7 @@ class SportsApiService {
       final pts = venueFilter == 'all'
           ? (int.tryParse('${r['points'] ?? 0}') ?? 0)
           : (int.tryParse('${splitSource['points'] ?? 0}') ?? 0);
+      final formList = _normalizeFormList(r['form'] ?? splitSource['form']);
 
       String zone = 'none';
       if (pos >= 1 && pos <= 4) {
@@ -2478,9 +2554,15 @@ class SportsApiService {
         logo: LogoCache.normalizeUrl(teamMap['logo']?.toString()),
         color: colorFromName(teamName),
         played: played,
+        won: won,
+        drawn: drawn,
+        lost: lost,
+        gf: gf,
+        ga: ga,
         gd: gd,
         points: pts,
         zone: zone,
+        form: formList,
       );
     }).toList();
 
@@ -2498,9 +2580,15 @@ class SportsApiService {
           logo: parsed[i].logo,
           color: parsed[i].color,
           played: parsed[i].played,
+          won: parsed[i].won,
+          drawn: parsed[i].drawn,
+          lost: parsed[i].lost,
+          gf: parsed[i].gf,
+          ga: parsed[i].ga,
           gd: parsed[i].gd,
           points: parsed[i].points,
           zone: i < 4 ? 'ucl' : (i < 6 ? 'uel' : 'none'),
+          form: parsed[i].form,
         ),
       );
     }
@@ -2653,43 +2741,55 @@ const List<MatchData> sampleMatches = [
   ),
 ];
 
-const sampleStandings = {
+const Map<String, List<StandingRow>> sampleStandings = {
   'Premier League': [
-    StandingRow(pos: 1, team: 'Liverpool', color: Color(0xFFFF1744), played: 12, gd: 17, points: 31, zone: 'ucl'),
-    StandingRow(pos: 2, team: 'Man. City', color: Color(0xFF00B0FF), played: 12, gd: 11, points: 26, zone: 'ucl'),
-    StandingRow(pos: 3, team: 'Arsenal', color: Color(0xFFFF5252), played: 12, gd: 9, points: 24, zone: 'ucl'),
-    StandingRow(pos: 4, team: 'Chelsea', color: Color(0xFF2979FF), played: 12, gd: 8, points: 22, zone: 'ucl'),
+    StandingRow(pos: 1, team: 'Liverpool', color: Color(0xFFFF1744), played: 12, won: 10, drawn: 1, lost: 1, gf: 27, ga: 10, gd: 17, points: 31, zone: 'ucl', form: ['GY', 'GY', 'GY', 'D', 'GY']),
+    StandingRow(pos: 2, team: 'Man. City', color: Color(0xFF00B0FF), played: 12, won: 8, drawn: 2, lost: 2, gf: 24, ga: 13, gd: 11, points: 26, zone: 'ucl', form: ['GY', 'GY', 'V', 'D', 'V']),
+    StandingRow(pos: 3, team: 'Arsenal', color: Color(0xFFFF5252), played: 12, won: 7, drawn: 3, lost: 2, gf: 21, ga: 12, gd: 9, points: 24, zone: 'ucl', form: ['GY', 'D', 'GY', 'GY', 'GY']),
+    StandingRow(pos: 4, team: 'Chelsea', color: Color(0xFF2979FF), played: 12, won: 6, drawn: 4, lost: 2, gf: 22, ga: 14, gd: 8, points: 22, zone: 'ucl', form: ['D', 'GY', 'GY', 'V', 'GY']),
+    StandingRow(pos: 5, team: 'Brighton', color: Color(0xFF00B0FF), played: 12, won: 6, drawn: 3, lost: 3, gf: 20, ga: 15, gd: 5, points: 21, zone: 'uel', form: ['GY', 'V', 'GY', 'D', 'GY']),
+    StandingRow(pos: 6, team: 'Tottenham', color: Color(0xFF7C4DFF), played: 12, won: 6, drawn: 1, lost: 5, gf: 23, ga: 15, gd: 8, points: 19, zone: 'uel', form: ['V', 'GY', 'V', 'GY', 'V']),
   ],
   'Bajnokok Ligája': [
-    StandingRow(pos: 1, team: 'Liverpool', color: Color(0xFFFF1744), played: 5, gd: 11, points: 15, zone: 'ucl'),
-    StandingRow(pos: 2, team: 'Barcelona', color: Color(0xFF2979FF), played: 5, gd: 13, points: 12, zone: 'ucl'),
-    StandingRow(pos: 3, team: 'Arsenal', color: Color(0xFFFF5252), played: 5, gd: 6, points: 10, zone: 'ucl'),
+    StandingRow(pos: 1, team: 'Liverpool', color: Color(0xFFFF1744), played: 5, won: 5, drawn: 0, lost: 0, gf: 13, ga: 2, gd: 11, points: 15, zone: 'ucl', form: ['GY', 'GY', 'GY', 'GY', 'GY']),
+    StandingRow(pos: 2, team: 'Barcelona', color: Color(0xFF2979FF), played: 5, won: 4, drawn: 0, lost: 1, gf: 18, ga: 5, gd: 13, points: 12, zone: 'ucl', form: ['GY', 'GY', 'V', 'GY', 'GY']),
+    StandingRow(pos: 3, team: 'Arsenal', color: Color(0xFFFF5252), played: 5, won: 3, drawn: 1, lost: 1, gf: 8, ga: 2, gd: 6, points: 10, zone: 'ucl', form: ['GY', 'D', 'GY', 'V', 'GY']),
+    StandingRow(pos: 4, team: 'Real Madrid', color: Color(0xFF7C4DFF), played: 5, won: 3, drawn: 0, lost: 2, gf: 11, ga: 9, gd: 2, points: 9, zone: 'ucl', form: ['GY', 'V', 'GY', 'V', 'GY']),
   ],
   'Európa Liga': [
-    StandingRow(pos: 1, team: 'Lazio', color: Color(0xFF00B0FF), played: 5, gd: 9, points: 13, zone: 'ucl'),
-    StandingRow(pos: 2, team: 'Athletic Club', color: Color(0xFFFF1744), played: 5, gd: 7, points: 13, zone: 'ucl'),
-    StandingRow(pos: 3, team: 'Eintracht Frankfurt', color: Color(0xFFFF5252), played: 5, gd: 5, points: 13, zone: 'ucl'),
+    StandingRow(pos: 1, team: 'Lazio', color: Color(0xFF00B0FF), played: 5, won: 4, drawn: 1, lost: 0, gf: 11, ga: 2, gd: 9, points: 13, zone: 'ucl', form: ['GY', 'GY', 'D', 'GY', 'GY']),
+    StandingRow(pos: 2, team: 'Athletic Club', color: Color(0xFFFF1744), played: 5, won: 4, drawn: 1, lost: 0, gf: 9, ga: 2, gd: 7, points: 13, zone: 'ucl', form: ['GY', 'D', 'GY', 'GY', 'GY']),
+    StandingRow(pos: 3, team: 'Eintracht Frankfurt', color: Color(0xFFFF5252), played: 5, won: 4, drawn: 1, lost: 0, gf: 10, ga: 5, gd: 5, points: 13, zone: 'ucl', form: ['D', 'GY', 'GY', 'GY', 'GY']),
   ],
   'Konferencia Liga': [
-    StandingRow(pos: 1, team: 'Chelsea', color: Color(0xFF2979FF), played: 4, gd: 14, points: 12, zone: 'ucl'),
-    StandingRow(pos: 2, team: 'Legia Warszawa', color: Color(0xFF00E676), played: 4, gd: 8, points: 12, zone: 'ucl'),
+    StandingRow(pos: 1, team: 'Chelsea', color: Color(0xFF2979FF), played: 4, won: 4, drawn: 0, lost: 0, gf: 16, ga: 2, gd: 14, points: 12, zone: 'ucl', form: ['GY', 'GY', 'GY', 'GY']),
+    StandingRow(pos: 2, team: 'Legia Warszawa', color: Color(0xFF00E676), played: 4, won: 4, drawn: 0, lost: 0, gf: 11, ga: 3, gd: 8, points: 12, zone: 'ucl', form: ['GY', 'GY', 'GY', 'GY']),
   ],
   'La Liga': [
-    StandingRow(pos: 1, team: 'Barcelona', color: Color(0xFF2979FF), played: 13, gd: 28, points: 33, zone: 'ucl'),
-    StandingRow(pos: 2, team: 'Real Madrid', color: Color(0xFF7C4DFF), played: 13, gd: 16, points: 30, zone: 'ucl'),
+    StandingRow(pos: 1, team: 'Barcelona', color: Color(0xFF2979FF), played: 13, won: 11, drawn: 0, lost: 2, gf: 40, ga: 12, gd: 28, points: 33, zone: 'ucl', form: ['GY', 'GY', 'V', 'GY', 'V']),
+    StandingRow(pos: 2, team: 'Real Madrid', color: Color(0xFF7C4DFF), played: 13, won: 9, drawn: 3, lost: 1, gf: 27, ga: 11, gd: 16, points: 30, zone: 'ucl', form: ['GY', 'GY', 'GY', 'D', 'GY']),
+    StandingRow(pos: 3, team: 'Atlético Madrid', color: Color(0xFFFF1744), played: 13, won: 7, drawn: 5, lost: 1, gf: 19, ga: 8, gd: 11, points: 26, zone: 'ucl', form: ['GY', 'D', 'GY', 'GY', 'D']),
+    StandingRow(pos: 4, team: 'Villarreal', color: Color(0xFFFFAB00), played: 13, won: 7, drawn: 4, lost: 2, gf: 24, ga: 19, gd: 5, points: 25, zone: 'ucl', form: ['D', 'GY', 'GY', 'D', 'GY']),
+    StandingRow(pos: 5, team: 'Osasuna', color: Color(0xFFFF5252), played: 13, won: 6, drawn: 3, lost: 4, gf: 18, ga: 19, gd: -1, points: 21, zone: 'uel', form: ['V', 'GY', 'D', 'V', 'GY']),
   ],
   'Bundesliga': [
-    StandingRow(pos: 1, team: 'Bayern München', color: Color(0xFFFF1744), played: 11, gd: 26, points: 29, zone: 'ucl'),
-    StandingRow(pos: 2, team: 'RB Leipzig', color: Color(0xFF00B0FF), played: 11, gd: 10, points: 24, zone: 'ucl'),
+    StandingRow(pos: 1, team: 'Bayern München', color: Color(0xFFFF1744), played: 11, won: 9, drawn: 2, lost: 0, gf: 36, ga: 10, gd: 26, points: 29, zone: 'ucl', form: ['GY', 'GY', 'D', 'GY', 'GY']),
+    StandingRow(pos: 2, team: 'RB Leipzig', color: Color(0xFF00B0FF), played: 11, won: 7, drawn: 3, lost: 1, gf: 19, ga: 9, gd: 10, points: 24, zone: 'ucl', form: ['D', 'GY', 'GY', 'D', 'V']),
+    StandingRow(pos: 3, team: 'Eintracht Frankfurt', color: Color(0xFFFF5252), played: 11, won: 7, drawn: 2, lost: 2, gf: 26, ga: 16, gd: 10, points: 23, zone: 'ucl', form: ['GY', 'GY', 'D', 'GY', 'V']),
+    StandingRow(pos: 4, team: 'Bayer Leverkusen', color: Color(0xFF00E676), played: 11, won: 5, drawn: 5, lost: 1, gf: 23, ga: 17, gd: 6, points: 20, zone: 'ucl', form: ['D', 'D', 'GY', 'D', 'GY']),
+    StandingRow(pos: 5, team: 'Borussia Dortmund', color: Color(0xFFFFAB00), played: 11, won: 6, drawn: 1, lost: 4, gf: 20, ga: 18, gd: 2, points: 19, zone: 'uel', form: ['V', 'GY', 'V', 'GY', 'V']),
   ],
   'Serie A': [
-    StandingRow(pos: 1, team: 'Napoli', color: Color(0xFF00B0FF), played: 13, gd: 12, points: 29, zone: 'ucl'),
-    StandingRow(pos: 2, team: 'Atalanta', color: Color(0xFF2979FF), played: 13, gd: 15, points: 28, zone: 'ucl'),
+    StandingRow(pos: 1, team: 'Napoli', color: Color(0xFF00B0FF), played: 13, won: 9, drawn: 2, lost: 2, gf: 21, ga: 9, gd: 12, points: 29, zone: 'ucl', form: ['GY', 'D', 'GY', 'GY', 'V']),
+    StandingRow(pos: 2, team: 'Atalanta', color: Color(0xFF2979FF), played: 13, won: 9, drawn: 1, lost: 3, gf: 34, ga: 19, gd: 15, points: 28, zone: 'ucl', form: ['GY', 'GY', 'GY', 'GY', 'V']),
+    StandingRow(pos: 3, team: 'Inter', color: Color(0xFF00E676), played: 13, won: 8, drawn: 4, lost: 1, gf: 29, ga: 15, gd: 14, points: 28, zone: 'ucl', form: ['D', 'GY', 'GY', 'D', 'GY']),
+    StandingRow(pos: 4, team: 'Fiorentina', color: Color(0xFF7C4DFF), played: 13, won: 8, drawn: 4, lost: 1, gf: 25, ga: 10, gd: 15, points: 28, zone: 'ucl', form: ['GY', 'GY', 'GY', 'D', 'GY']),
   ],
   'NB I': [
-    StandingRow(pos: 1, team: 'Puskás Akadémia', color: Color(0xFFFFAB00), played: 13, gd: 11, points: 29, zone: 'ucl'),
-    StandingRow(pos: 2, team: 'Ferencváros', color: Color(0xFF00E676), played: 12, gd: 14, points: 27, zone: 'ucl'),
-    StandingRow(pos: 3, team: 'MTK Budapest', color: Color(0xFF00B0FF), played: 13, gd: 5, points: 22, zone: 'uel'),
+    StandingRow(pos: 1, team: 'Puskás Akadémia', color: Color(0xFFFFAB00), played: 13, won: 9, drawn: 2, lost: 2, gf: 23, ga: 12, gd: 11, points: 29, zone: 'ucl', form: ['GY', 'V', 'GY', 'GY', 'D']),
+    StandingRow(pos: 2, team: 'Ferencváros', color: Color(0xFF00E676), played: 12, won: 8, drawn: 3, lost: 1, gf: 25, ga: 11, gd: 14, points: 27, zone: 'ucl', form: ['GY', 'GY', 'GY', 'D', 'GY']),
+    StandingRow(pos: 3, team: 'MTK Budapest', color: Color(0xFF00B0FF), played: 13, won: 6, drawn: 4, lost: 3, gf: 19, ga: 14, gd: 5, points: 22, zone: 'uel', form: ['D', 'GY', 'V', 'GY', 'D']),
+    StandingRow(pos: 4, team: 'Paks', color: Color(0xFF00C853), played: 13, won: 6, drawn: 3, lost: 4, gf: 22, ga: 19, gd: 3, points: 21, zone: 'uel', form: ['V', 'GY', 'D', 'GY', 'V']),
   ],
 };
 
