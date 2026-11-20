@@ -25,6 +25,7 @@ class FavoritesTab extends StatelessWidget {
           DisplayPrefs.isFavoriteTeam(m.homeTeam) ||
           DisplayPrefs.isFavoriteTeam(m.awayTeam);
     }).toList();
+    final liveFavCount = favMatches.where((m) => m.isLive).length;
 
     return SafeArea(
       child: Column(
@@ -40,7 +41,28 @@ class FavoritesTab extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Kedvenc Meccsek & Csapatok ⭐', style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Kedvenc Meccsek & Csapatok ⭐',
+                        style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    if (liveFavCount > 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: p.liveRed,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '$liveFavCount ÉLŐ',
+                          style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w900),
+                        ),
+                      ),
+                  ],
+                ),
                 const SizedBox(height: 4),
                 Text(
                   DisplayPrefs.favoriteTeams.isEmpty
@@ -75,7 +97,9 @@ class FavoritesTab extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: p.cardBg,
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: p.goldAccent.withAlpha(80)),
+                          border: Border.all(
+                            color: match.isLive ? p.primaryAccent.withAlpha(110) : p.goldAccent.withAlpha(80),
+                          ),
                         ),
                         child: MatchCard(
                           match: match,
