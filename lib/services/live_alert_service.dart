@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:zsoltscores/api_service.dart';
+import 'package:zsoltscores/theme/app_theme.dart';
 
 class LiveAlertService {
   static final Map<String, String> _knownSnapshots = {};
@@ -7,12 +8,17 @@ class LiveAlertService {
 
   static void showTestAlert(BuildContext context) {
     if (!context.mounted) return;
+    final p = AppThemeController.instance.palette;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        backgroundColor: Color(0xFF1C2541),
+      SnackBar(
+        backgroundColor: p.cardElevated,
         behavior: SnackBarBehavior.floating,
-        duration: Duration(seconds: 4),
-        content: Text(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: p.primaryAccent.withAlpha(110)),
+        ),
+        duration: const Duration(seconds: 4),
+        content: const Text(
           '🔔 Próbaértesítés: ⚽ GÓL! Ferencváros 3 - 1 Puskás Akadémia (82\')',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12.5),
         ),
@@ -63,10 +69,15 @@ class LiveAlertService {
     }
 
     if (alerts.isNotEmpty && context.mounted) {
+      final p = AppThemeController.instance.palette;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          backgroundColor: const Color(0xFF1C2541),
+          backgroundColor: p.cardElevated,
           behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: p.primaryAccent.withAlpha(110)),
+          ),
           duration: const Duration(seconds: 5),
           content: Text(
             alerts.join('\n'),
