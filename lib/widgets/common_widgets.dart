@@ -1,118 +1,129 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:zsoltscores/api_service.dart';
+import 'package:zsoltscores/theme/app_theme.dart';
 
 int compareHungarianStrings(String a, String b) {
   const order = {
-    'a': 1, 'á': 2, 'b': 3, 'c': 4, 'cs': 5, 'd': 6, 'dz': 7, 'dzs': 8,
-    'e': 9, 'é': 10, 'f': 11, 'g': 12, 'gy': 13, 'h': 14, 'i': 15, 'í': 16,
-    'j': 17, 'k': 18, 'l': 19, 'ly': 20, 'm': 21, 'n': 22, 'ny': 23, 'o': 24,
-    'ó': 25, 'ö': 26, 'ő': 27, 'p': 28, 'q': 29, 'r': 30, 's': 31, 'sz': 32,
-    't': 33, 'ty': 34, 'u': 35, 'ú': 36, 'ü': 37, 'ű': 38, 'v': 39, 'w': 40,
-    'x': 41, 'y': 42, 'z': 43, 'zs': 44,
+    'a': 1, 'á': 2, 'b': 3, 'c': 4, 'd': 5, 'e': 6, 'é': 7, 'f': 8, 'g': 9,
+    'h': 10, 'i': 11, 'í': 12, 'j': 13, 'k': 14, 'l': 15, 'm': 16, 'n': 17,
+    'o': 18, 'ó': 19, 'ö': 20, 'ő': 21, 'p': 22, 'q': 23, 'r': 24, 's': 25,
+    't': 26, 'u': 27, 'ú': 28, 'ü': 29, 'ű': 30, 'v': 31, 'w': 32, 'x': 33,
+    'y': 34, 'z': 35,
   };
-
-  List<int> tokenize(String s) {
-    final lower = s.toLowerCase().trim();
-    final tokens = <int>[];
-    int i = 0;
-    while (i < lower.length) {
-      if (i + 2 < lower.length) {
-        final tri = lower.substring(i, i + 3);
-        if (order.containsKey(tri)) {
-          tokens.add(order[tri]! * 10);
-          i += 3;
-          continue;
-        }
-      }
-      if (i + 1 < lower.length) {
-        final di = lower.substring(i, i + 2);
-        if (order.containsKey(di)) {
-          tokens.add(order[di]! * 10);
-          i += 2;
-          continue;
-        }
-      }
-      final ch = lower[i];
-      if (order.containsKey(ch)) {
-        tokens.add(order[ch]! * 10);
-      } else {
-        tokens.add(1000 + ch.codeUnitAt(0));
-      }
-      i++;
-    }
-    return tokens;
+  final la = a.trim().toLowerCase();
+  final lb = b.trim().toLowerCase();
+  final len = la.length < lb.length ? la.length : lb.length;
+  for (var i = 0; i < len; i++) {
+    final ca = la[i];
+    final cb = lb[i];
+    if (ca == cb) continue;
+    final wa = order[ca] ?? (100 + ca.codeUnitAt(0));
+    final wb = order[cb] ?? (100 + cb.codeUnitAt(0));
+    if (wa != wb) return wa.compareTo(wb);
   }
-
-  final ta = tokenize(a);
-  final tb = tokenize(b);
-  final len = ta.length < tb.length ? ta.length : tb.length;
-  for (int i = 0; i < len; i++) {
-    if (ta[i] != tb[i]) return ta[i].compareTo(tb[i]);
-  }
-  return ta.length.compareTo(tb.length);
+  return la.length.compareTo(lb.length);
 }
 
-class CountryFlagBadge extends StatefulWidget {
+class CountryFlagBadge extends StatelessWidget {
   final String countryName;
   final String? flagUrl;
+  final double width;
+  final double height;
 
   const CountryFlagBadge({
     super.key,
     required this.countryName,
     this.flagUrl,
+    this.width = 20,
+    this.height = 14,
   });
 
-  @override
-  State<CountryFlagBadge> createState() => _CountryFlagBadgeState();
-}
-
-class _CountryFlagBadgeState extends State<CountryFlagBadge> {
-  File? _localFile;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadFlag();
+  static String? _assetForCountry(String raw) {
+    final c = raw.trim().toLowerCase();
+    if (c.contains('england') || c.contains('anglia') || c.contains('premier league')) {
+      return 'assets/flags/gb-eng.png';
+    }
+    if (c.contains('spain') || c.contains('spanyol') || c.contains('la liga')) {
+      return 'assets/flags/es.png';
+    }
+    if (c.contains('italy') || c.contains('olasz') || c.contains('serie a')) {
+      return 'assets/flags/it.png';
+    }
+    if (c.contains('germany') || c.contains('német') || c.contains('bundesliga')) {
+      return 'assets/flags/de.png';
+    }
+    if (c.contains('france') || c.contains('francia') || c.contains('ligue 1')) {
+      return 'assets/flags/fr.png';
+    }
+    if (c.contains('hungary') || c.contains('magyar') || c.contains('nb i') || c.contains('otp bank')) {
+      return 'assets/flags/hu.png';
+    }
+    if (c.contains('netherlands') || c.contains('holland') || c.contains('eredivisie')) {
+      return 'assets/flags/nl.png';
+    }
+    if (c.contains('portugal') || c.contains('portugál') || c.contains('liga portugal')) {
+      return 'assets/flags/pt.png';
+    }
+    if (c.contains('europe') || c.contains('európa') || c.contains('champions') || c.contains('europa') || c.contains('conference')) {
+      return 'assets/flags/eu.png';
+    }
+    if (c.contains('world') || c.contains('világ') || c.contains('international') || c.contains('fifa')) {
+      return 'assets/flags/un.png';
+    }
+    return null;
   }
 
-  @override
-  void didUpdateWidget(covariant CountryFlagBadge oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.flagUrl != widget.flagUrl) {
-      _localFile = null;
-      _loadFlag();
-    }
-  }
-
-  Future<void> _loadFlag() async {
-    if (widget.flagUrl == null || widget.flagUrl!.trim().isEmpty) return;
-    final file = await LogoCache.getOrDownload(widget.flagUrl);
-    if (mounted && file != null) {
-      setState(() => _localFile = file);
-    }
+  static String _emojiFallback(String raw) {
+    final c = raw.trim().toLowerCase();
+    if (c.contains('england') || c.contains('anglia')) return '🏴󠁧󠁢󠁥󠁮󠁧󠁿';
+    if (c.contains('spain') || c.contains('spanyol')) return '🇪🇸';
+    if (c.contains('italy') || c.contains('olasz')) return '🇮🇹';
+    if (c.contains('germany') || c.contains('német')) return '🇩🇪';
+    if (c.contains('france') || c.contains('francia')) return '🇫🇷';
+    if (c.contains('hungary') || c.contains('magyar')) return '🇭🇺';
+    if (c.contains('netherlands') || c.contains('holland')) return '🇳🇱';
+    if (c.contains('portugal') || c.contains('portugál')) return '🇵🇹';
+    if (c.contains('europe') || c.contains('európa') || c.contains('champions') || c.contains('europa')) return '🇪🇺';
+    return '🌍';
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_localFile != null) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(3),
-        child: Image.file(
-          _localFile!,
-          width: 18,
-          height: 13,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => Text(
-            HungarianLocalization.flagEmojiForCountry(widget.countryName),
-            style: const TextStyle(fontSize: 13),
-          ),
-        ),
+    final p = AppThemeController.instance.palette;
+    final assetPath = _assetForCountry(countryName);
+    final url = (flagUrl ?? '').trim();
+
+    Widget content;
+    if (assetPath != null) {
+      content = Image.asset(
+        assetPath,
+        width: width,
+        height: height,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Text(_emojiFallback(countryName), style: TextStyle(fontSize: height)),
       );
+    } else if (url.startsWith('http')) {
+      content = Image.network(
+        url,
+        width: width,
+        height: height,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Text(_emojiFallback(countryName), style: TextStyle(fontSize: height)),
+      );
+    } else {
+      content = Text(_emojiFallback(countryName), style: TextStyle(fontSize: height));
     }
-    return Text(
-      HungarianLocalization.flagEmojiForCountry(widget.countryName),
-      style: const TextStyle(fontSize: 13),
+
+    return Container(
+      width: width,
+      height: height,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(3),
+        border: Border.all(color: p.borderSubtle),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: content,
     );
   }
 }
@@ -128,8 +139,8 @@ class CachedTeamLogo extends StatefulWidget {
     super.key,
     required this.teamName,
     required this.fallbackColor,
-    required this.logoUrl,
-    this.radius = 22,
+    this.logoUrl,
+    this.radius = 12,
     this.showInitialsOnFallback = true,
   });
 
@@ -138,56 +149,119 @@ class CachedTeamLogo extends StatefulWidget {
 }
 
 class _CachedTeamLogoState extends State<CachedTeamLogo> {
-  File? _localFile;
+  String? _resolvedUrl;
+  bool _lookedUp = false;
 
   @override
   void initState() {
     super.initState();
-    _resolveLogo();
+    _initLogo();
   }
 
   @override
   void didUpdateWidget(covariant CachedTeamLogo oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.logoUrl != widget.logoUrl) {
-      _localFile = null;
-      _resolveLogo();
+    if (oldWidget.teamName != widget.teamName || oldWidget.logoUrl != widget.logoUrl) {
+      _lookedUp = false;
+      _initLogo();
     }
   }
 
-  Future<void> _resolveLogo() async {
-    if (widget.logoUrl == null || widget.logoUrl!.trim().isEmpty) return;
-    final file = await LogoCache.getOrDownload(widget.logoUrl);
-    if (mounted && file != null) {
-      setState(() => _localFile = file);
+  Future<void> _initLogo() async {
+    final direct = (widget.logoUrl ?? '').trim();
+    if (direct.startsWith('http')) {
+      _resolvedUrl = direct;
+      await LogoCache.saveUrl(widget.teamName, direct);
+      if (mounted) setState(() => _lookedUp = true);
+      return;
     }
+
+    final cached = LogoCache.getCachedUrl(widget.teamName);
+    if (cached != null && cached.isNotEmpty) {
+      _resolvedUrl = cached;
+      if (mounted) setState(() => _lookedUp = true);
+      return;
+    }
+
+    if (ApiConfig.hasValidKey && widget.teamName.trim().length >= 2) {
+      final fetched = await SportsApiService.lookupTeamLogoUrl(widget.teamName);
+      if (fetched != null && fetched.isNotEmpty) {
+        _resolvedUrl = fetched;
+      }
+    }
+
+    if (mounted) {
+      setState(() => _lookedUp = true);
+    }
+  }
+
+  String _initials(String name) {
+    final clean = name.trim();
+    if (clean.isEmpty) return '?';
+    final parts = clean.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    if (parts.length >= 2) {
+      return '${parts.first[0]}${parts[1][0]}'.toUpperCase();
+    }
+    return clean.substring(0, clean.length >= 2 ? 2 : 1).toUpperCase();
   }
 
   @override
   Widget build(BuildContext context) {
-    final name = widget.teamName.trim();
-    final initials = name.length >= 2 ? name.substring(0, 2).toUpperCase() : name.toUpperCase();
-    final imgSize = widget.radius * 1.55;
+    final p = AppThemeController.instance.palette;
+    final size = widget.radius * 2;
+    final url = _resolvedUrl;
 
-    return CircleAvatar(
-      radius: widget.radius,
-      backgroundColor: widget.fallbackColor,
-      child: _localFile != null
-          ? ClipOval(
-              child: Image.file(
-                _localFile!,
-                width: imgSize,
-                height: imgSize,
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => widget.showInitialsOnFallback
-                    ? Text(initials, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10))
-                    : const SizedBox(),
-              ),
-            )
-          : (widget.showInitialsOnFallback
-              ? Text(initials, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10))
-              : const SizedBox()),
-    );
+    Widget fallbackWidget() {
+      return Container(
+        width: size,
+        height: size,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [widget.fallbackColor, widget.fallbackColor.withAlpha(175)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white24, width: 1),
+        ),
+        child: widget.showInitialsOnFallback
+            ? Text(
+                _initials(widget.teamName),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: (widget.radius * 0.72).clamp(8.5, 16.0),
+                ),
+              )
+            : Icon(Icons.shield, color: Colors.white, size: widget.radius * 1.15),
+      );
+    }
+
+    if (!_lookedUp && (widget.logoUrl == null || widget.logoUrl!.isEmpty)) {
+      return fallbackWidget();
+    }
+
+    if (url != null && url.startsWith('http')) {
+      return Container(
+        width: size,
+        height: size,
+        padding: EdgeInsets.all((widget.radius * 0.12).clamp(1.5, 3.0)),
+        decoration: BoxDecoration(
+          color: p.scaffoldBg.withAlpha(220),
+          shape: BoxShape.circle,
+          border: Border.all(color: widget.fallbackColor.withAlpha(110), width: 1),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Image.network(
+          url,
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => fallbackWidget(),
+        ),
+      );
+    }
+
+    return fallbackWidget();
   }
 }
 
@@ -205,99 +279,114 @@ class FormationPitchView extends StatelessWidget {
 
   List<List<LineupPlayer>> _buildRows(List<LineupPlayer> starters) {
     if (starters.isEmpty) return const [];
-    final gk = starters.where((p) => p.position.toUpperCase() == 'GK').toList();
-    final others = starters.where((p) => p.position.toUpperCase() != 'GK').toList();
+    final gk = <LineupPlayer>[];
+    final def = <LineupPlayer>[];
+    final mid = <LineupPlayer>[];
+    final fwd = <LineupPlayer>[];
 
-    final parts = lineup.formation
-        .split('-')
-        .map((s) => int.tryParse(s.trim()) ?? 0)
-        .where((n) => n > 0)
-        .toList();
+    for (final p in starters) {
+      final pos = p.position.trim().toUpperCase();
+      if (pos.startsWith('G') || pos.contains('GK') || pos.contains('KAPUS')) {
+        gk.add(p);
+      } else if (pos.startsWith('D') || pos.contains('DEF') || pos.contains('VÉDŐ')) {
+        def.add(p);
+      } else if (pos.startsWith('M') || pos.contains('MID') || pos.contains('KÖZÉP')) {
+        mid.add(p);
+      } else if (pos.startsWith('F') || pos.startsWith('A') || pos.contains('FWD') || pos.contains('ATT') || pos.contains('CSATÁR')) {
+        fwd.add(p);
+      } else {
+        mid.add(p);
+      }
+    }
+
+    if (gk.isNotEmpty && (def.isNotEmpty || mid.isNotEmpty || fwd.isNotEmpty)) {
+      final rows = <List<LineupPlayer>>[];
+      if (fwd.isNotEmpty) rows.add(fwd);
+      if (mid.isNotEmpty) rows.add(mid);
+      if (def.isNotEmpty) rows.add(def);
+      rows.add(gk);
+      return rows;
+    }
 
     final rows = <List<LineupPlayer>>[];
-    int cursor = 0;
-
-    if (parts.isNotEmpty && parts.length <= 5 && others.length >= 4) {
-      for (final count in parts.reversed) {
-        if (cursor >= others.length) break;
-        final take = (cursor + count <= others.length) ? count : (others.length - cursor);
-        rows.add(others.sublist(cursor, cursor + take));
-        cursor += take;
-      }
-      if (cursor < others.length) {
-        rows.add(others.sublist(cursor));
-      }
-    } else {
-      final chunkSize = (others.length / 3).ceil().clamp(1, 5);
-      for (int i = 0; i < others.length; i += chunkSize) {
-        rows.add(others.sublist(i, (i + chunkSize).clamp(0, others.length)));
-      }
+    for (var i = 0; i < starters.length; i += 4) {
+      rows.add(starters.sublist(i, (i + 4).clamp(0, starters.length)));
     }
-
-    if (gk.isNotEmpty) {
-      rows.add(gk);
-    }
-    return rows;
+    return rows.reversed.toList();
   }
 
   @override
   Widget build(BuildContext context) {
+    final p = AppThemeController.instance.palette;
     final rows = _buildRows(lineup.starters);
     if (rows.isEmpty) return const SizedBox.shrink();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF0F3D24), Color(0xFF175734), Color(0xFF0F3D24)],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withAlpha(55), width: 1.5),
-        boxShadow: const [
-          BoxShadow(color: Colors.black38, blurRadius: 10, offset: Offset(0, 4)),
-        ],
+        border: Border.all(color: accent.withAlpha(135)),
+        boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 8, offset: Offset(0, 3))],
       ),
-      child: Stack(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
         children: [
-          Positioned.fill(
-            child: CustomPaint(painter: _PitchLinesPainter()),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
-            child: Column(
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            color: p.cardElevated,
+            child: Row(
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      teamName,
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12.5),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: Colors.black38,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.white24),
-                      ),
-                      child: Text(
-                        lineup.formation,
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11),
-                      ),
-                    ),
-                  ],
+                Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
                 ),
-                const SizedBox(height: 10),
-                ...rows.map((rowPlayers) {
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '$teamName • ${lineup.formation}',
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: accent.withAlpha(24),
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  child: Text(
+                    '${lineup.starters.length} kezdő',
+                    style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: accent),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          CustomPaint(
+            painter: _PitchLinesPainter(accent: accent),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFF14532D), Color(0xFF166534), Color(0xFF14532D)],
+                ),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: rows.map((rowPlayers) {
                   return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 7),
+                    padding: const EdgeInsets.symmetric(vertical: 6),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: rowPlayers.map((p) {
-                        return Expanded(
+                      children: rowPlayers.map((pl) {
+                        final shortName = pl.name.trim().split(RegExp(r'\s+')).last;
+                        return Flexible(
                           child: Column(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               Container(
                                 width: 30,
@@ -307,12 +396,10 @@ class FormationPitchView extends StatelessWidget {
                                   color: accent,
                                   shape: BoxShape.circle,
                                   border: Border.all(color: Colors.white, width: 1.6),
-                                  boxShadow: const [
-                                    BoxShadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 2)),
-                                  ],
+                                  boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 4)],
                                 ),
                                 child: Text(
-                                  p.number.isNotEmpty ? p.number : '•',
+                                  pl.number.isNotEmpty ? pl.number : '•',
                                   style: const TextStyle(
                                     color: Colors.black,
                                     fontWeight: FontWeight.w900,
@@ -320,18 +407,17 @@ class FormationPitchView extends StatelessWidget {
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 4),
+                              const SizedBox(height: 3),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                                 decoration: BoxDecoration(
-                                  color: Colors.black.withAlpha(115),
-                                  borderRadius: BorderRadius.circular(5),
+                                  color: Colors.black54,
+                                  borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(
-                                  p.name,
+                                  shortName,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  textAlign: TextAlign.center,
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 10,
@@ -345,8 +431,8 @@ class FormationPitchView extends StatelessWidget {
                       }).toList(),
                     ),
                   );
-                }),
-              ],
+                }).toList(),
+              ),
             ),
           ),
         ],
@@ -356,19 +442,52 @@ class FormationPitchView extends StatelessWidget {
 }
 
 class _PitchLinesPainter extends CustomPainter {
+  final Color accent;
+  const _PitchLinesPainter({required this.accent});
+
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white.withAlpha(32)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2;
+    final stripePaint = Paint()..color = Colors.white.withAlpha(9);
+    const stripeCount = 6;
+    final stripeH = size.height / stripeCount;
+    for (var i = 0; i < stripeCount; i += 2) {
+      canvas.drawRect(Rect.fromLTWH(0, i * stripeH, size.width, stripeH), stripePaint);
+    }
 
-    canvas.drawCircle(Offset(size.width / 2, 42), 28, paint);
-    final boxWidth = size.width * 0.56;
-    final boxLeft = (size.width - boxWidth) / 2;
-    canvas.drawRect(Rect.fromLTWH(boxLeft, size.height - 54, boxWidth, 54), paint);
+    final linePaint = Paint()
+      ..color = Colors.white.withAlpha(68)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.3;
+
+    final insetRect = Rect.fromLTWH(10, 8, size.width - 20, size.height - 16);
+    canvas.drawRect(insetRect, linePaint);
+    canvas.drawLine(
+      Offset(10, size.height / 2),
+      Offset(size.width - 10, size.height / 2),
+      linePaint,
+    );
+    canvas.drawCircle(Offset(size.width / 2, size.height / 2), 28, linePaint);
+    canvas.drawCircle(Offset(size.width / 2, size.height / 2), 2.5, Paint()..color = Colors.white70);
+
+    final topBoxW = size.width * 0.44;
+    canvas.drawRect(
+      Rect.fromLTWH((size.width - topBoxW) / 2, 8, topBoxW, 30),
+      linePaint,
+    );
+    canvas.drawRect(
+      Rect.fromLTWH((size.width - topBoxW) / 2, size.height - 38, topBoxW, 30),
+      linePaint,
+    );
+
+    final goalPaint = Paint()
+      ..color = accent.withAlpha(110)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+    final goalW = size.width * 0.2;
+    canvas.drawRect(Rect.fromLTWH((size.width - goalW) / 2, 3, goalW, 5), goalPaint);
+    canvas.drawRect(Rect.fromLTWH((size.width - goalW) / 2, size.height - 8, goalW, 5), goalPaint);
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _PitchLinesPainter oldDelegate) => oldDelegate.accent != accent;
 }
