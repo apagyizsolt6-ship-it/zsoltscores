@@ -90,6 +90,118 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
     return ((onTarget * 100) / totalShots).round().clamp(0, 100);
   }
 
+  Widget _dominanceSummaryCard(AppPalette p, int homeAttackIndex, int awayAttackIndex, int homeAcc, int awayAcc) {
+    final totalDominance = (homeAttackIndex + awayAttackIndex) == 0 ? 1 : (homeAttackIndex + awayAttackIndex);
+    final homeDomPct = ((homeAttackIndex * 100) / totalDominance).round().clamp(0, 100);
+    final awayDomPct = 100 - homeDomPct;
+
+    String verdict;
+    Color verdictColor;
+    if ((homeDomPct - awayDomPct).abs() <= 4) {
+      verdict = 'Kiegyenlített játék • Szoros mutatók';
+      verdictColor = p.goldAccent;
+    } else if (homeDomPct > awayDomPct) {
+      verdict = '${_match.homeTeam} mezőnyfölényben ($homeDomPct%)';
+      verdictColor = p.primaryAccent;
+    } else {
+      verdict = '${_match.awayTeam} mezőnyfölényben ($awayDomPct%)';
+      verdictColor = p.secondaryAccent;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: p.cardElevated,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: verdictColor.withAlpha(90)),
+        gradient: LinearGradient(
+          colors: [
+            p.primaryAccent.withAlpha(18),
+            p.cardElevated,
+            p.secondaryAccent.withAlpha(18),
+          ],
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.bolt_rounded, color: verdictColor, size: 18),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  verdict,
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: verdictColor),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _miniMetricBox(
+                  p: p,
+                  label: 'Hazai pontosság',
+                  value: '$homeAcc%',
+                  accent: p.primaryAccent,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _miniMetricBox(
+                  p: p,
+                  label: 'Játék-arány',
+                  value: '$homeDomPct : $awayDomPct',
+                  accent: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _miniMetricBox(
+                  p: p,
+                  label: 'Vendég pontosság',
+                  value: '$awayAcc%',
+                  accent: p.secondaryAccent,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _miniMetricBox({
+    required AppPalette p,
+    required String label,
+    required String value,
+    required Color accent,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      decoration: BoxDecoration(
+        color: p.scaffoldBg.withAlpha(175),
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(color: p.borderSubtle),
+      ),
+      child: Column(
+        children: [
+          Text(value, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: accent)),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 10, color: Colors.white54),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = AppThemeController.instance.palette;
@@ -256,6 +368,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                   ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
+                      _dominanceSummaryCard(p, homeAttackIndex, awayAttackIndex, homeAcc, awayAcc),
                       _statBar('Labdabirtoklás (%)', _match.possessionHome, 100 - _match.possessionHome),
                       _statBar('Összes lövés', _match.shotsHome, _match.shotsAway),
                       _statBar('Kaput eltaláló lövés', _match.shotsOnTargetHome, _match.shotsOnTargetAway),
