@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart' hide CollapseMode;
 import 'package:zsoltscores/api_service.dart';
 import 'package:zsoltscores/screens/match_stats_screen.dart';
+import 'package:zsoltscores/theme/app_theme.dart';
 import 'package:zsoltscores/widgets/common_widgets.dart';
 
 class MatchesTab extends StatefulWidget {
@@ -145,6 +146,7 @@ class _MatchesTabState extends State<MatchesTab> {
 
   @override
   Widget build(BuildContext context) {
+    final p = AppThemeController.instance.palette;
     final groupedByCompetition = <String, List<MatchData>>{};
     final liveMatches = widget.matches.where((m) => m.isLive).toList();
     final liveCount = liveMatches.length;
@@ -202,7 +204,7 @@ class _MatchesTabState extends State<MatchesTab> {
             : '$provName Élő$liveAutoTag • $countText • $updClock');
     final sourceColor = !widget.isLiveApiData
         ? Colors.amberAccent
-        : (widget.loadedFromCache ? const Color(0xFF00B0FF) : const Color(0xFF00E676));
+        : (widget.loadedFromCache ? p.secondaryAccent : p.primaryAccent);
 
     final quickChips = <String>{
       ...DisplayPrefs.favoriteTeams,
@@ -214,14 +216,15 @@ class _MatchesTabState extends State<MatchesTab> {
         children: [
           Container(
             padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [Color(0xFF1C2541), Color(0xFF2B3E63), Color(0xFF0F4C5C)],
+                colors: [p.headerStart, p.headerEnd],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
-              boxShadow: [
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(22)),
+              border: Border(bottom: BorderSide(color: p.borderSubtle)),
+              boxShadow: const [
                 BoxShadow(color: Colors.black38, blurRadius: 8, offset: Offset(0, 3)),
               ],
             ),
@@ -232,7 +235,7 @@ class _MatchesTabState extends State<MatchesTab> {
                     Container(
                       padding: const EdgeInsets.all(7),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [Color(0xFF00E676), Color(0xFF00B0FF)]),
+                        gradient: LinearGradient(colors: [p.primaryAccent, p.secondaryAccent]),
                         borderRadius: BorderRadius.circular(11),
                       ),
                       child: const Icon(Icons.sports_soccer, color: Color(0xFF0B132B), size: 20),
@@ -277,17 +280,17 @@ class _MatchesTabState extends State<MatchesTab> {
                           padding: const EdgeInsets.all(7),
                           margin: const EdgeInsets.only(right: 4),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF0B132B).withAlpha(180),
+                            color: p.scaffoldBg.withAlpha(190),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
                               color: DisplayPrefs.autoLiveListRefresh
-                                  ? const Color(0xFF00E676).withAlpha(130)
+                                  ? p.primaryAccent.withAlpha(130)
                                   : Colors.white24,
                             ),
                           ),
                           child: Icon(
                             Icons.sensors,
-                            color: DisplayPrefs.autoLiveListRefresh ? const Color(0xFF00E676) : Colors.white38,
+                            color: DisplayPrefs.autoLiveListRefresh ? p.primaryAccent : Colors.white38,
                             size: 18,
                           ),
                         ),
@@ -302,13 +305,13 @@ class _MatchesTabState extends State<MatchesTab> {
                           padding: const EdgeInsets.all(7),
                           margin: const EdgeInsets.only(right: 4),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF0B132B).withAlpha(180),
+                            color: p.scaffoldBg.withAlpha(190),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFF00B0FF).withAlpha(110)),
+                            border: Border.all(color: p.secondaryAccent.withAlpha(110)),
                           ),
                           child: Icon(
                             areAllCollapsed ? Icons.unfold_more : Icons.unfold_less,
-                            color: const Color(0xFF00B0FF),
+                            color: p.secondaryAccent,
                             size: 19,
                           ),
                         ),
@@ -320,13 +323,10 @@ class _MatchesTabState extends State<MatchesTab> {
                         duration: const Duration(milliseconds: 180),
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
-                          gradient: quickFilter == 'live'
-                              ? const LinearGradient(colors: [Color(0xFFFF1744), Color(0xFFFF6D00)])
-                              : null,
-                          color: quickFilter == 'live' ? null : const Color(0xFFFF1744).withAlpha(38),
+                          color: quickFilter == 'live' ? p.liveRed : p.liveRed.withAlpha(38),
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
-                            color: quickFilter == 'live' ? const Color(0xFFFF5252) : const Color(0xFFFF1744).withAlpha(170),
+                            color: quickFilter == 'live' ? const Color(0xFFFF5252) : p.liveRed.withAlpha(170),
                           ),
                         ),
                         child: Row(
@@ -336,7 +336,7 @@ class _MatchesTabState extends State<MatchesTab> {
                               width: 7,
                               height: 7,
                               decoration: BoxDecoration(
-                                color: quickFilter == 'live' ? Colors.white : const Color(0xFFFF1744),
+                                color: quickFilter == 'live' ? Colors.white : p.liveRed,
                                 shape: BoxShape.circle,
                               ),
                             ),
@@ -364,7 +364,7 @@ class _MatchesTabState extends State<MatchesTab> {
                       onPressed: widget.onOpenSettings,
                       icon: Icon(
                         Icons.settings,
-                        color: ApiConfig.hasValidKey ? const Color(0xFF00E676) : Colors.amberAccent,
+                        color: ApiConfig.hasValidKey ? p.primaryAccent : Colors.amberAccent,
                         size: 21,
                       ),
                     ),
@@ -376,16 +376,16 @@ class _MatchesTabState extends State<MatchesTab> {
                     Container(
                       height: 38,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF0B132B).withAlpha(200),
+                        color: p.scaffoldBg.withAlpha(210),
                         borderRadius: BorderRadius.circular(11),
-                        border: Border.all(color: const Color(0xFF00B0FF).withAlpha(70)),
+                        border: Border.all(color: p.secondaryAccent.withAlpha(70)),
                       ),
                       child: Row(
                         children: [
                           IconButton(
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(minWidth: 32, minHeight: 36),
-                            icon: const Icon(Icons.chevron_left, size: 19, color: Color(0xFF00B0FF)),
+                            icon: Icon(Icons.chevron_left, size: 19, color: p.secondaryAccent),
                             onPressed: () => widget.onChangeDate(-1),
                           ),
                           GestureDetector(
@@ -401,7 +401,7 @@ class _MatchesTabState extends State<MatchesTab> {
                           IconButton(
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(minWidth: 32, minHeight: 36),
-                            icon: const Icon(Icons.chevron_right, size: 19, color: Color(0xFF00B0FF)),
+                            icon: Icon(Icons.chevron_right, size: 19, color: p.secondaryAccent),
                             onPressed: () => widget.onChangeDate(1),
                           ),
                         ],
@@ -424,7 +424,7 @@ class _MatchesTabState extends State<MatchesTab> {
                           decoration: InputDecoration(
                             hintText: 'Keresés csapatra, országra vagy bajnokságra...',
                             hintStyle: const TextStyle(color: Colors.white54, fontSize: 12),
-                            prefixIcon: const Icon(Icons.search, color: Color(0xFF00E676), size: 18),
+                            prefixIcon: Icon(Icons.search, color: p.primaryAccent, size: 18),
                             suffixIcon: searchQuery.isNotEmpty
                                 ? IconButton(
                                     icon: const Icon(Icons.close, size: 16, color: Colors.white54),
@@ -432,15 +432,15 @@ class _MatchesTabState extends State<MatchesTab> {
                                   )
                                 : null,
                             filled: true,
-                            fillColor: const Color(0xFF0B132B).withAlpha(200),
+                            fillColor: p.scaffoldBg.withAlpha(210),
                             contentPadding: EdgeInsets.zero,
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(11),
-                              borderSide: BorderSide(color: Colors.white.withAlpha(25)),
+                              borderSide: BorderSide(color: p.borderSubtle),
                             ),
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(11),
-                              borderSide: BorderSide(color: Colors.white.withAlpha(25)),
+                              borderSide: BorderSide(color: p.borderSubtle),
                             ),
                           ),
                         ),
@@ -465,9 +465,9 @@ class _MatchesTabState extends State<MatchesTab> {
                                 padding: const EdgeInsets.symmetric(horizontal: 9),
                                 alignment: Alignment.center,
                                 decoration: BoxDecoration(
-                                  color: active ? const Color(0xFFFFAB00) : const Color(0xFF0B132B).withAlpha(175),
+                                  color: active ? p.goldAccent : p.scaffoldBg.withAlpha(185),
                                   borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: active ? const Color(0xFFFFAB00) : Colors.white12),
+                                  border: Border.all(color: active ? p.goldAccent : Colors.white12),
                                 ),
                                 child: Text(
                                   chipText,
@@ -508,13 +508,13 @@ class _MatchesTabState extends State<MatchesTab> {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    _quickFilterChip('Mind', 'all', const Color(0xFF00E676)),
+                    _quickFilterChip('Mind', 'all', p.primaryAccent),
                     const SizedBox(width: 6),
-                    _quickFilterChip('Élő', 'live', const Color(0xFFFF1744)),
+                    _quickFilterChip('Élő', 'live', p.liveRed),
                     const SizedBox(width: 6),
-                    _quickFilterChip('Vége', 'finished', const Color(0xFF00B0FF)),
+                    _quickFilterChip('Vége', 'finished', p.secondaryAccent),
                     const SizedBox(width: 6),
-                    _quickFilterChip('Kedvencek', 'favs', const Color(0xFFFFAB00)),
+                    _quickFilterChip('Kedvencek', 'favs', p.goldAccent),
                   ],
                 ),
               ],
@@ -538,9 +538,9 @@ class _MatchesTabState extends State<MatchesTab> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1C2541),
+                          color: p.cardElevated,
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFF00E676).withAlpha(110)),
+                          border: Border.all(color: p.primaryAccent.withAlpha(110)),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -561,7 +561,7 @@ class _MatchesTabState extends State<MatchesTab> {
             ),
 
           if (widget.isLoading)
-            const LinearProgressIndicator(color: Color(0xFF00E676), backgroundColor: Colors.transparent),
+            LinearProgressIndicator(color: p.primaryAccent, backgroundColor: Colors.transparent),
 
           if (!ApiConfig.hasValidKey)
             Container(
@@ -569,14 +569,14 @@ class _MatchesTabState extends State<MatchesTab> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [const Color(0xFF00E676).withAlpha(32), const Color(0xFF00B0FF).withAlpha(28)],
+                  colors: [p.primaryAccent.withAlpha(32), p.secondaryAccent.withAlpha(28)],
                 ),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF00E676).withAlpha(130)),
+                border: Border.all(color: p.primaryAccent.withAlpha(130)),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.vpn_key, color: Color(0xFF00E676), size: 19),
+                  Icon(Icons.vpn_key, color: p.primaryAccent, size: 19),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -587,7 +587,7 @@ class _MatchesTabState extends State<MatchesTab> {
                   const SizedBox(width: 6),
                   FilledButton(
                     style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF00E676),
+                      backgroundColor: p.primaryAccent,
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       minimumSize: Size.zero,
                     ),
@@ -632,8 +632,8 @@ class _MatchesTabState extends State<MatchesTab> {
                     ? 'Összes (${widget.matches.length})'
                     : (isPinned ? '📌 $comp' : comp);
                 final accent = comp == 'Összes'
-                    ? const Color(0xFF00E676)
-                    : (isPinned ? const Color(0xFFFFAB00) : SportsApiService.colorFromName(comp));
+                    ? p.primaryAccent
+                    : (isPinned ? p.goldAccent : SportsApiService.colorFromName(comp));
 
                 return Padding(
                   padding: const EdgeInsets.only(right: 7),
@@ -647,10 +647,10 @@ class _MatchesTabState extends State<MatchesTab> {
                         gradient: isSelected
                             ? LinearGradient(colors: [accent, accent.withAlpha(190)])
                             : null,
-                        color: isSelected ? null : const Color(0xFF1C2541),
+                        color: isSelected ? null : p.cardElevated,
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
-                          color: isSelected ? accent : (isPinned ? const Color(0xFFFFAB00).withAlpha(110) : Colors.white12),
+                          color: isSelected ? accent : (isPinned ? p.goldAccent.withAlpha(110) : p.borderSubtle),
                         ),
                       ),
                       child: Text(
@@ -670,7 +670,7 @@ class _MatchesTabState extends State<MatchesTab> {
 
           Expanded(
             child: RefreshIndicator(
-              color: const Color(0xFF00E676),
+              color: p.primaryAccent,
               onRefresh: widget.onRefresh,
               child: competitionKeys.isEmpty
                   ? ListView(
@@ -691,29 +691,22 @@ class _MatchesTabState extends State<MatchesTab> {
                         final isPinned = DisplayPrefs.pinnedCompetitions.contains(compKey);
                         final isCollapsed = _isCompetitionCollapsed(compKey, compMatches);
                         final accent = isPinned
-                            ? const Color(0xFFFFAB00)
+                            ? p.goldAccent
                             : SportsApiService.colorFromName(compKey);
 
                         return Container(
                           margin: const EdgeInsets.only(bottom: 12),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF131D3B),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: accent.withAlpha(isPinned ? 140 : 85)),
-                            boxShadow: [
-                              BoxShadow(
-                                color: accent.withAlpha(18),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
+                            color: p.cardBg,
+                            borderRadius: BorderRadius.circular(15),
+                            border: Border.all(color: accent.withAlpha(isPinned ? 135 : 75)),
                           ),
                           child: Column(
                             children: [
                               InkWell(
                                 borderRadius: BorderRadius.vertical(
-                                  top: const Radius.circular(14),
-                                  bottom: Radius.circular(isCollapsed ? 14 : 0),
+                                  top: const Radius.circular(15),
+                                  bottom: Radius.circular(isCollapsed ? 15 : 0),
                                 ),
                                 onTap: () => _toggleSingleCompetition(compKey),
                                 child: Container(
@@ -721,14 +714,14 @@ class _MatchesTabState extends State<MatchesTab> {
                                   decoration: BoxDecoration(
                                     gradient: LinearGradient(
                                       colors: [
-                                        accent.withAlpha(78),
-                                        const Color(0xFF1C2541),
-                                        accent.withAlpha(26),
+                                        accent.withAlpha(62),
+                                        p.cardElevated,
+                                        accent.withAlpha(20),
                                       ],
                                     ),
                                     borderRadius: BorderRadius.vertical(
-                                      top: const Radius.circular(14),
-                                      bottom: Radius.circular(isCollapsed ? 14 : 0),
+                                      top: const Radius.circular(15),
+                                      bottom: Radius.circular(isCollapsed ? 15 : 0),
                                     ),
                                   ),
                                   child: Row(
@@ -745,9 +738,9 @@ class _MatchesTabState extends State<MatchesTab> {
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                                         decoration: BoxDecoration(
-                                          color: const Color(0xFF0B132B).withAlpha(215),
+                                          color: p.scaffoldBg.withAlpha(215),
                                           borderRadius: BorderRadius.circular(6),
-                                          border: Border.all(color: accent.withAlpha(130)),
+                                          border: Border.all(color: accent.withAlpha(120)),
                                         ),
                                         child: Row(
                                           mainAxisSize: MainAxisSize.min,
@@ -789,7 +782,7 @@ class _MatchesTabState extends State<MatchesTab> {
                                           child: Icon(
                                             isPinned ? Icons.push_pin : Icons.push_pin_outlined,
                                             size: 16,
-                                            color: isPinned ? const Color(0xFFFFAB00) : Colors.white38,
+                                            color: isPinned ? p.goldAccent : Colors.white38,
                                           ),
                                         ),
                                       ),
@@ -831,7 +824,7 @@ class _MatchesTabState extends State<MatchesTab> {
                                         Divider(
                                           height: 1,
                                           thickness: 1,
-                                          color: Colors.white.withAlpha(14),
+                                          color: p.borderSubtle,
                                         ),
                                     ],
                                   );
@@ -849,17 +842,18 @@ class _MatchesTabState extends State<MatchesTab> {
   }
 
   Widget _quickFilterChip(String label, String value, Color accent) {
+    final p = AppThemeController.instance.palette;
     final active = quickFilter == value;
     return Expanded(
       child: GestureDetector(
         onTap: () => setState(() => quickFilter = value),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 5),
+          padding: const EdgeInsets.symmetric(vertical: 5.5),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: active ? accent : const Color(0xFF0B132B).withAlpha(190),
+            color: active ? accent : p.scaffoldBg.withAlpha(200),
             borderRadius: BorderRadius.circular(9),
-            border: Border.all(color: active ? accent : Colors.white12),
+            border: Border.all(color: active ? accent : p.borderSubtle),
           ),
           child: Text(
             label,
@@ -891,6 +885,7 @@ class MatchCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = AppThemeController.instance.palette;
     final homeWinning = match.isLive || match.isFinished ? match.homeScore > match.awayScore : false;
     final awayWinning = match.isLive || match.isFinished ? match.awayScore > match.homeScore : false;
     final showScore = match.isLive || match.isFinished;
@@ -905,36 +900,14 @@ class MatchCard extends StatelessWidget {
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MatchStatsScreen(match: match))),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 450),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
         decoration: BoxDecoration(
-          color: isGoalFlash ? const Color(0xFF00E676).withAlpha(65) : null,
+          color: isGoalFlash
+              ? p.primaryAccent.withAlpha(55)
+              : (match.isLive ? p.primaryAccent.withAlpha(14) : Colors.transparent),
           border: hasFavTeam
-              ? Border(left: BorderSide(color: const Color(0xFFFFAB00), width: 3.5))
-              : null,
-          gradient: isGoalFlash
-              ? null
-              : (hasFavTeam
-                  ? LinearGradient(
-                      colors: [
-                        const Color(0xFFFFAB00).withAlpha(24),
-                        Colors.transparent,
-                      ],
-                    )
-                  : (match.isLive
-                      ? LinearGradient(
-                          colors: [
-                            const Color(0xFF00E676).withAlpha(24),
-                            match.homeColor.withAlpha(16),
-                            const Color(0xFF00B0FF).withAlpha(20),
-                          ],
-                        )
-                      : LinearGradient(
-                          colors: [
-                            match.homeColor.withAlpha(14),
-                            Colors.transparent,
-                            match.awayColor.withAlpha(14),
-                          ],
-                        ))),
+              ? Border(left: BorderSide(color: p.goldAccent, width: 3.5))
+              : (match.isLive ? Border(left: BorderSide(color: p.primaryAccent, width: 3)) : null),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -942,45 +915,44 @@ class MatchCard extends StatelessWidget {
             Row(
               children: [
                 SizedBox(
-                  width: 48,
+                  width: 50,
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       if (match.isLive) ...[
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            gradient: const LinearGradient(colors: [Color(0xFFFF1744), Color(0xFFFF5252)]),
-                            borderRadius: BorderRadius.circular(5),
+                            color: p.liveRed,
+                            borderRadius: BorderRadius.circular(6),
                           ),
                           child: const Text(
                             'ÉLŐ',
-                            style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900),
+                            style: TextStyle(color: Colors.white, fontSize: 8.5, fontWeight: FontWeight.w900, letterSpacing: 0.4),
                           ),
                         ),
-                        const SizedBox(height: 2),
+                        const SizedBox(height: 3),
                         Text(
                           match.status,
-                          style: const TextStyle(color: Color(0xFF00E676), fontSize: 11, fontWeight: FontWeight.w900),
+                          style: TextStyle(color: p.primaryAccent, fontSize: 11, fontWeight: FontWeight.w900),
                           textAlign: TextAlign.center,
                         ),
                       ] else if (match.isFinished) ...[
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF00B0FF).withAlpha(32),
-                            borderRadius: BorderRadius.circular(5),
-                            border: Border.all(color: const Color(0xFF00B0FF).withAlpha(90)),
+                            color: Colors.white.withAlpha(14),
+                            borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
                             match.status,
-                            style: const TextStyle(color: Color(0xFF80D8FF), fontSize: 10, fontWeight: FontWeight.w800),
+                            style: const TextStyle(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.w700),
                           ),
                         ),
                       ] else ...[
                         Text(
                           match.status,
-                          style: const TextStyle(color: Colors.white70, fontSize: 11.5, fontWeight: FontWeight.w700),
+                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800),
                           textAlign: TextAlign.center,
                         ),
                       ],
@@ -988,15 +960,15 @@ class MatchCard extends StatelessWidget {
                   ),
                 ),
                 Container(
-                  width: 2.5,
-                  height: 40,
-                  margin: const EdgeInsets.symmetric(horizontal: 8),
+                  width: 2,
+                  height: 38,
+                  margin: const EdgeInsets.symmetric(horizontal: 9),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(2),
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: [match.homeColor, match.awayColor],
+                      colors: [match.homeColor.withAlpha(200), match.awayColor.withAlpha(200)],
                     ),
                   ),
                 ),
@@ -1012,7 +984,7 @@ class MatchCard extends StatelessWidget {
                         isFinished: match.isFinished,
                         isFavTeam: homeFavTeam,
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 7),
                       _teamLine(
                         name: match.awayTeam,
                         color: match.awayColor,
@@ -1025,48 +997,40 @@ class MatchCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                SizedBox(
-                  width: 30,
+                Container(
+                  width: 34,
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  decoration: BoxDecoration(
+                    color: match.isLive
+                        ? p.primaryAccent.withAlpha(22)
+                        : Colors.white.withAlpha(10),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: match.isLive ? p.primaryAccent.withAlpha(90) : Colors.white10,
+                    ),
+                  ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                        decoration: BoxDecoration(
+                      Text(
+                        showScore ? '${match.homeScore}' : '-',
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w900,
                           color: match.isLive
-                              ? const Color(0xFF00E676).withAlpha(28)
-                              : (homeWinning ? match.homeColor.withAlpha(35) : Colors.transparent),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          showScore ? '${match.homeScore}' : '-',
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w900,
-                            color: match.isLive
-                                ? const Color(0xFF00E676)
-                                : (homeWinning ? Colors.white : Colors.white70),
-                          ),
+                              ? p.primaryAccent
+                              : (homeWinning ? Colors.white : Colors.white60),
                         ),
                       ),
                       const SizedBox(height: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                        decoration: BoxDecoration(
+                      Text(
+                        showScore ? '${match.awayScore}' : '-',
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w900,
                           color: match.isLive
-                              ? const Color(0xFF00B0FF).withAlpha(28)
-                              : (awayWinning ? match.awayColor.withAlpha(35) : Colors.transparent),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          showScore ? '${match.awayScore}' : '-',
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w900,
-                            color: match.isLive
-                                ? const Color(0xFF00B0FF)
-                                : (awayWinning ? Colors.white : Colors.white70),
-                          ),
+                              ? p.primaryAccent
+                              : (awayWinning ? Colors.white : Colors.white60),
                         ),
                       ),
                     ],
@@ -1076,39 +1040,54 @@ class MatchCard extends StatelessWidget {
                 GestureDetector(
                   onTap: onToggleFavorite,
                   child: Padding(
-                    padding: const EdgeInsets.all(4),
+                    padding: const EdgeInsets.all(5),
                     child: Icon(
-                      isFavorite ? Icons.star : Icons.star_border,
-                      color: isFavorite ? const Color(0xFFFFAB00) : Colors.white38,
-                      size: 20,
+                      isFavorite ? Icons.star_rounded : Icons.star_outline_rounded,
+                      color: isFavorite ? p.goldAccent : Colors.white30,
+                      size: 21,
                     ),
                   ),
                 ),
               ],
             ),
             if (keyEvents.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                children: keyEvents.map((ev) {
-                  final isRed = ev.type == 'red';
-                  return Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(isRed ? '🟥' : '⚽', style: const TextStyle(fontSize: 10.5)),
-                      const SizedBox(width: 3),
-                      Text(
-                        '${ev.player} (${ev.minute})',
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          color: isRed ? Colors.redAccent : Colors.white70,
-                          fontWeight: isRed ? FontWeight.bold : FontWeight.w500,
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.only(left: 59),
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 5,
+                  children: keyEvents.map((ev) {
+                    final isRed = ev.type == 'red';
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                      decoration: BoxDecoration(
+                        color: isRed
+                            ? p.liveRed.withAlpha(32)
+                            : Colors.white.withAlpha(12),
+                        borderRadius: BorderRadius.circular(7),
+                        border: Border.all(
+                          color: isRed ? p.liveRed.withAlpha(110) : Colors.white12,
                         ),
                       ),
-                    ],
-                  );
-                }).toList(),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(isRed ? '🟥' : '⚽', style: const TextStyle(fontSize: 10)),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${ev.player} ${ev.minute}',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              color: isRed ? const Color(0xFFFF8A80) : Colors.white70,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
               ),
             ],
           ],
@@ -1141,9 +1120,9 @@ class MatchCard extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              fontSize: 13,
+              fontSize: 13.5,
               fontWeight: (isWinning || isFavTeam) ? FontWeight.w800 : FontWeight.w600,
-              color: isFavTeam ? const Color(0xFFFFD54F) : (dimTeam ? Colors.white60 : Colors.white),
+              color: isFavTeam ? const Color(0xFFFFD54F) : (dimTeam ? Colors.white54 : Colors.white),
             ),
           ),
         ),
