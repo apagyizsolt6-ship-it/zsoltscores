@@ -729,8 +729,13 @@ class FetchResult<T> {
   final T data;
   final bool fromCache;
   final DateTime fetchedAt;
-  FetchResult({required this.data, required this.fromCache, DateTime? fetchedAt})
-      : fetchedAt = fetchedAt ?? DateTime.now();
+  final String? note;
+  FetchResult({
+    required this.data,
+    required this.fromCache,
+    DateTime? fetchedAt,
+    this.note,
+  }) : fetchedAt = fetchedAt ?? DateTime.now();
 }
 
 // --- ADATMODELLEK ---
@@ -2355,45 +2360,152 @@ class SportsApiService {
     'NB I': 1255,
   };
 
+  static Future<int?> _resolveHighlightlyCurrentLeagueId(String leagueName) async {
+    final cacheKey = 'hl_league_map_v1';
+    final cached = await ApiCache.get(cacheKey, const Duration(hours: 24));
+    Map<String, int> discovered = {};
+    if (cached != null) {
+      final d = jsonDecode(cached);
+      if (d is Map) {
+        d.forEach((k, v) {
+          final parsed = int.tryParse('$v');
+          if (parsed != null) discovered[k.toString()] = parsed;
+        });
+      }
+    }
+
+    if (discovered.isEmpty) {
+      try {
+        final uri = Uri.parse('${ApiConfig.highlightlyBaseUrl}/leagues?limit=100');
+        final res = await http.get(uri, headers: ApiConfig.highlightlyHeaders).timeout(const Duration(seconds: 10));
+        if (res.statusCode == 200) {
+          await ApiCache.recordNetworkCall();
+          final body = jsonDecode(res.body);
+          final list = body is List ? body : (body is Map && body['data'] is List ? body['data'] : []);
+          for (final item in list) {
+            if (item is Map) {
+              final id = int.tryParse('${item['id'] ?? ''}');
+              final rawName = HungarianLocalization.extractRawName(item['name'] ?? '');
+              final country = HungarianLocalization.localizeCountry(item['country'] ?? '', leagueName: rawName);
+              final locName = HungarianLocalization.localizeLeague(rawName, countryName: country);
+              if (id != null) {
+                for (final key in highlightlyLeagueIds.keys) {
+                  if (locName.toLowerCase() == key.toLowerCase() ||
+                      rawName.toLowerCase().contains(key.toLowerCase())) {
+                    discovered[key] = id;
+                  }
+                }
+              }
+            }
+          }
+          if (discovered.isNotEmpty) {
+            await ApiCache.put(cacheKey, jsonEncode(discovered));
+          }
+        }
+      } catch (_) {}
+    }
+
+    return discovered[leagueName] ?? highlightlyLeagueIds[leagueName];
+  }
+
   static Future<FetchResult<List<StandingRow>>> fetchStandings(
     String leagueName, {
     String venueFilter = 'all',
     bool forceRefresh = false,
   }) async {
-    if (!ApiConfig.hasValidKey) throw Exception('Nincs API kulcs');
+    if (!ApiConfig.hasValidKey) {
+      throw Exception('Nincs API kulcs beállítva');
+    }
 
-    final cacheKey = '${ApiConfig.providerTag}_standings_v2_${leagueName}_$venueFilter';
+    final cacheKey = '${ApiConfig.providerTag}_standings_v4_${leagueName}_$venueFilter';
     if (!forceRefresh) {
-      final cachedJson = await ApiCache.get(cacheKey, const Duration(hours: 2));
+      final cachedJson = await ApiCache.get(cacheKey, const Duration(minutes: 30));
       if (cachedJson != null) {
         final rows = ApiConfig.isStatPal
             ? _parseStatPalStandingsBody(cachedJson, venueFilter: venueFilter)
             : _parseHighlightlyStandingsBody(cachedJson, venueFilter: venueFilter);
-        return FetchResult(data: rows, fromCache: true);
+        if (rows.isNotEmpty) {
+          return FetchResult(
+            data: rows,
+            fromCache: true,
+            note: 'Gyorsítótár (${ApiConfig.providerName}) • ${rows.length} csapat',
+          );
+        }
       }
     }
 
     if (ApiConfig.isStatPal) {
       final id = statpalV2LeagueIds[leagueName];
-      if (id == null) throw Exception('Ismeretlen bajnokság');
+      if (id == null) throw Exception('Ismeretlen bajnokság: $leagueName');
       final key = Uri.encodeComponent(ApiConfig.statpalKey.trim());
-      final uri = Uri.parse('${ApiConfig.statpalV2BaseUrl}/leagues/$id/standings?access_key=$key');
-      final res = await http.get(uri).timeout(const Duration(seconds: 10));
-      if (res.statusCode != 200) throw Exception('StatPal V2 tabella hiba (${res.statusCode})');
-      await ApiCache.recordNetworkCall();
-      await ApiCache.put(cacheKey, res.body);
-      return FetchResult(data: _parseStatPalStandingsBody(res.body, venueFilter: venueFilter), fromCache: false);
+      final candidateUrls = [
+        '${ApiConfig.statpalV2BaseUrl}/leagues/$id/standings?access_key=$key',
+        '${ApiConfig.statpalV2BaseUrl}/standings?league_id=$id&access_key=$key',
+        '${ApiConfig.statpalV1BaseUrl}/standings?league=$id&access_key=$key',
+      ];
+
+      String lastErr = 'Nem sikerült tabellát lekérni';
+      for (final url in candidateUrls) {
+        try {
+          final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
+          if (res.statusCode == 200) {
+            await ApiCache.recordNetworkCall();
+            final rows = _parseStatPalStandingsBody(res.body, venueFilter: venueFilter);
+            if (rows.isNotEmpty) {
+              await ApiCache.put(cacheKey, res.body);
+              return FetchResult(
+                data: rows,
+                fromCache: false,
+                note: 'StatPal V2 élő tabella • ${rows.length} csapat',
+              );
+            }
+            lastErr = 'StatPal üres tabellát adott (200)';
+          } else {
+            lastErr = 'StatPal HTTP ${res.statusCode}';
+          }
+        } catch (e) {
+          lastErr = '$e';
+        }
+      }
+      throw Exception(lastErr);
     } else {
-      final id = highlightlyLeagueIds[leagueName];
-      if (id == null) throw Exception('Ismeretlen bajnokság');
-      final uri = Uri.parse('${ApiConfig.highlightlyBaseUrl}/standings?leagueId=$id');
-      final res = await http
-          .get(uri, headers: ApiConfig.highlightlyHeaders)
-          .timeout(const Duration(seconds: 10));
-      if (res.statusCode != 200) throw Exception('Highlightly tabella hiba (${res.statusCode})');
-      await ApiCache.recordNetworkCall();
-      await ApiCache.put(cacheKey, res.body);
-      return FetchResult(data: _parseHighlightlyStandingsBody(res.body, venueFilter: venueFilter), fromCache: false);
+      final resolvedId = await _resolveHighlightlyCurrentLeagueId(leagueName);
+      if (resolvedId == null) throw Exception('Ismeretlen bajnokság: $leagueName');
+
+      final now = DateTime.now();
+      final seasonYear = now.month >= 7 ? now.year : now.year - 1;
+      final candidateUrls = [
+        '${ApiConfig.highlightlyBaseUrl}/standings?leagueId=$resolvedId&season=$seasonYear',
+        '${ApiConfig.highlightlyBaseUrl}/standings?leagueId=$resolvedId',
+        '${ApiConfig.highlightlyBaseUrl}/leagues/$resolvedId/standings',
+      ];
+
+      String lastErr = 'Nem sikerült Highlightly tabellát lekérni';
+      for (final url in candidateUrls) {
+        try {
+          final res = await http
+              .get(Uri.parse(url), headers: ApiConfig.highlightlyHeaders)
+              .timeout(const Duration(seconds: 10));
+          if (res.statusCode == 200) {
+            await ApiCache.recordNetworkCall();
+            final rows = _parseHighlightlyStandingsBody(res.body, venueFilter: venueFilter);
+            if (rows.isNotEmpty) {
+              await ApiCache.put(cacheKey, res.body);
+              return FetchResult(
+                data: rows,
+                fromCache: false,
+                note: 'Highlightly élő tabella (ID: $resolvedId) • ${rows.length} csapat',
+              );
+            }
+            lastErr = 'Highlightly üres tabellát adott (ID: $resolvedId)';
+          } else {
+            lastErr = 'Highlightly HTTP ${res.statusCode} (ID: $resolvedId)';
+          }
+        } catch (e) {
+          lastErr = '$e';
+        }
+      }
+      throw Exception(lastErr);
     }
   }
 
@@ -2406,14 +2518,21 @@ class SportsApiService {
     } else if (decoded is Map) {
       if (decoded['data'] is List) {
         teams = decoded['data'] as List;
+      } else if (decoded['data'] is Map) {
+        final dMap = decoded['data'] as Map;
+        teams = _asMapList(dMap['standings'] ?? dMap['table'] ?? dMap['rows'] ?? dMap['team']);
       } else {
-        final root = decoded['standings'] ?? decoded['data'] ?? decoded;
+        final root = decoded['standings'] ?? decoded['table'] ?? decoded['data'] ?? decoded;
         if (root is Map) {
-          final leagues = _asMapList(root['league']);
+          final leagues = _asMapList(root['league'] ?? root['leagues']);
           if (leagues.isNotEmpty) {
             final firstLeague = leagues[0] as Map;
-            teams = _asMapList(firstLeague['team'] ?? firstLeague['standings']);
+            teams = _asMapList(firstLeague['team'] ?? firstLeague['standings'] ?? firstLeague['rows']);
+          } else {
+            teams = _asMapList(root['team'] ?? root['rows'] ?? root['entries']);
           }
+        } else if (root is List) {
+          teams = root;
         }
       }
     }
@@ -2421,7 +2540,7 @@ class SportsApiService {
     final rows = _asMapList(teams).map((item) {
       final r = item as Map;
       final teamObj = r['team'] is Map ? r['team'] as Map : r;
-      final teamName = (_attr(teamObj, ['name', 'team_name']) ?? 'Csapat').toString();
+      final teamName = (_attr(teamObj, ['name', 'team_name', 'title']) ?? 'Csapat').toString();
       final pos = int.tryParse('${_attr(r, ['position', 'pos', 'rank']) ?? 0}') ?? 0;
       final splitMap = venueFilter == 'home'
           ? (r['home'] is Map ? r['home'] as Map : (r['overall'] is Map ? r['overall'] as Map : r))
@@ -2469,7 +2588,7 @@ class SportsApiService {
       );
     }).toList();
 
-    if (venueFilter != 'all') {
+    if (venueFilter != 'all' && rows.isNotEmpty) {
       rows.sort((a, b) {
         final pCmp = b.points.compareTo(a.points);
         if (pCmp != 0) return pCmp;
@@ -2501,23 +2620,35 @@ class SportsApiService {
   static List<StandingRow> _parseHighlightlyStandingsBody(String body, {String venueFilter = 'all'}) {
     final decoded = jsonDecode(body);
     List rows = [];
-    if (decoded is Map && decoded['groups'] is List && (decoded['groups'] as List).isNotEmpty) {
-      final firstGroup = decoded['groups'][0];
-      if (firstGroup is Map && firstGroup['standings'] is List) {
-        rows = firstGroup['standings'];
+
+    if (decoded is Map) {
+      if (decoded['groups'] is List && (decoded['groups'] as List).isNotEmpty) {
+        final firstGroup = decoded['groups'][0];
+        if (firstGroup is Map) {
+          rows = (firstGroup['standings'] ?? firstGroup['rows'] ?? firstGroup['table'] ?? []) as List;
+        }
+      } else if (decoded['standings'] is List) {
+        rows = decoded['standings'] as List;
+      } else if (decoded['data'] is List) {
+        rows = decoded['data'] as List;
+      } else if (decoded['data'] is Map) {
+        final dMap = decoded['data'] as Map;
+        if (dMap['groups'] is List && (dMap['groups'] as List).isNotEmpty && dMap['groups'][0] is Map) {
+          rows = (dMap['groups'][0]['standings'] ?? []) as List;
+        } else {
+          rows = (dMap['standings'] ?? dMap['table'] ?? dMap['rows'] ?? []) as List;
+        }
       }
-    } else if (decoded is Map && decoded['data'] is List) {
-      rows = decoded['data'];
     } else if (decoded is List) {
       rows = decoded;
     }
 
     final parsed = _asMapList(rows).map((item) {
       final r = item as Map;
-      final teamMap = r['team'] is Map ? r['team'] as Map : {};
+      final teamMap = r['team'] is Map ? r['team'] as Map : r;
       final totalMap = r['total'] is Map ? r['total'] as Map : r;
       final teamName = (teamMap['name'] ?? r['teamName'] ?? 'Csapat').toString();
-      final pos = int.tryParse('${r['position'] ?? r['pos'] ?? 0}') ?? 0;
+      final pos = int.tryParse('${r['position'] ?? r['pos'] ?? r['rank'] ?? 0}') ?? 0;
 
       final splitSource = venueFilter == 'home'
           ? (r['home'] is Map ? r['home'] as Map : totalMap)
@@ -2525,18 +2656,18 @@ class SportsApiService {
               ? (r['away'] is Map ? r['away'] as Map : totalMap)
               : totalMap);
 
-      final played = int.tryParse('${splitSource['games'] ?? splitSource['played'] ?? 0}') ?? 0;
+      final played = int.tryParse('${splitSource['games'] ?? splitSource['played'] ?? splitSource['matchesPlayed'] ?? 0}') ?? 0;
       final won = int.tryParse('${splitSource['wins'] ?? splitSource['won'] ?? 0}') ?? 0;
       final drawn = int.tryParse('${splitSource['draws'] ?? splitSource['drawn'] ?? 0}') ?? 0;
       final lost = int.tryParse('${splitSource['losses'] ?? splitSource['lost'] ?? 0}') ?? 0;
-      final gf = int.tryParse('${splitSource['scoredGoals'] ?? splitSource['goalsFor'] ?? 0}') ?? 0;
-      final ga = int.tryParse('${splitSource['receivedGoals'] ?? splitSource['goalsAgainst'] ?? 0}') ?? 0;
+      final gf = int.tryParse('${splitSource['scoredGoals'] ?? splitSource['goalsFor'] ?? splitSource['gf'] ?? 0}') ?? 0;
+      final ga = int.tryParse('${splitSource['receivedGoals'] ?? splitSource['goalsAgainst'] ?? splitSource['ga'] ?? 0}') ?? 0;
       final gd = venueFilter == 'all'
-          ? (int.tryParse('${r['goalDifference'] ?? (gf - ga)}') ?? (gf - ga))
+          ? (int.tryParse('${r['goalDifference'] ?? r['gd'] ?? (gf - ga)}') ?? (gf - ga))
           : (gf - ga);
       final pts = venueFilter == 'all'
-          ? (int.tryParse('${r['points'] ?? 0}') ?? 0)
-          : (int.tryParse('${splitSource['points'] ?? 0}') ?? 0);
+          ? (int.tryParse('${r['points'] ?? r['pts'] ?? 0}') ?? 0)
+          : (int.tryParse('${splitSource['points'] ?? splitSource['pts'] ?? 0}') ?? 0);
       final formList = _normalizeFormList(r['form'] ?? splitSource['form']);
 
       String zone = 'none';
@@ -2566,7 +2697,7 @@ class SportsApiService {
       );
     }).toList();
 
-    if (venueFilter != 'all') {
+    if (venueFilter != 'all' && parsed.isNotEmpty) {
       parsed.sort((a, b) {
         final pCmp = b.points.compareTo(a.points);
         if (pCmp != 0) return pCmp;
@@ -2596,7 +2727,7 @@ class SportsApiService {
   }
 }
 
-// --- DEMO MINTA ADATOK ---
+// --- DEMO MINTA ADATOK (CSAK HA NINCS API KULCS) ---
 const List<MatchData> sampleMatches = [
   MatchData(
     id: 'm1',
@@ -2621,175 +2752,23 @@ const List<MatchData> sampleMatches = [
     foulsAway: 9,
     homeForm: ['GY', 'GY', 'D', 'GY', 'GY'],
     awayForm: ['GY', 'GY', 'GY', 'D', 'GY'],
-    h2hFixtures: [
-      H2HFixture(dateLabel: '2025-11-27', homeTeam: 'Liverpool', awayTeam: 'Real Madrid', scoreLabel: '2 - 0'),
-      H2HFixture(dateLabel: '2023-03-15', homeTeam: 'Real Madrid', awayTeam: 'Liverpool', scoreLabel: '1 - 0'),
-      H2HFixture(dateLabel: '2023-02-21', homeTeam: 'Liverpool', awayTeam: 'Real Madrid', scoreLabel: '2 - 5'),
-    ],
-    homeLineup: TeamLineup(
-      formation: '4-3-3',
-      starters: [
-        LineupPlayer(number: '1', name: 'Courtois', position: 'GK'),
-        LineupPlayer(number: '17', name: 'Vázquez', position: 'DEF'),
-        LineupPlayer(number: '22', name: 'Rüdiger', position: 'DEF'),
-        LineupPlayer(number: '35', name: 'Asencio', position: 'DEF'),
-        LineupPlayer(number: '23', name: 'Mendy', position: 'DEF'),
-        LineupPlayer(number: '15', name: 'Valverde', position: 'MID'),
-        LineupPlayer(number: '6', name: 'Camavinga', position: 'MID'),
-        LineupPlayer(number: '10', name: 'Modrić', position: 'MID'),
-        LineupPlayer(number: '11', name: 'Rodrygo', position: 'FWD'),
-        LineupPlayer(number: '9', name: 'Mbappé', position: 'FWD'),
-        LineupPlayer(number: '7', name: 'Vinícius', position: 'FWD'),
-      ],
-      substitutes: [
-        LineupPlayer(number: '13', name: 'Lunin', position: 'GK', isSubstitute: true),
-        LineupPlayer(number: '5', name: 'Bellingham', position: 'MID', isSubstitute: true),
-        LineupPlayer(number: '21', name: 'Brahim Díaz', position: 'MID', isSubstitute: true),
-      ],
-    ),
-    awayLineup: TeamLineup(
-      formation: '4-3-3',
-      starters: [
-        LineupPlayer(number: '62', name: 'Kelleher', position: 'GK'),
-        LineupPlayer(number: '84', name: 'Bradley', position: 'DEF'),
-        LineupPlayer(number: '5', name: 'Konaté', position: 'DEF'),
-        LineupPlayer(number: '4', name: 'Van Dijk', position: 'DEF'),
-        LineupPlayer(number: '26', name: 'Robertson', position: 'DEF'),
-        LineupPlayer(number: '10', name: 'Mac Allister', position: 'MID'),
-        LineupPlayer(number: '38', name: 'Gravenberch', position: 'MID'),
-        LineupPlayer(number: '8', name: 'Szoboszlai', position: 'MID'),
-        LineupPlayer(number: '11', name: 'Salah', position: 'FWD'),
-        LineupPlayer(number: '9', name: 'Núñez', position: 'FWD'),
-        LineupPlayer(number: '7', name: 'Luis Díaz', position: 'FWD'),
-      ],
-      substitutes: [
-        LineupPlayer(number: '18', name: 'Gakpo', position: 'FWD', isSubstitute: true),
-        LineupPlayer(number: '17', name: 'Jones', position: 'MID', isSubstitute: true),
-      ],
-    ),
     events: [
       MatchEvent(minute: "14'", player: 'Szoboszlai D.', type: 'goal', isHome: false),
-      MatchEvent(minute: "28'", player: 'Valverde', type: 'yellow', isHome: true),
       MatchEvent(minute: "39'", player: 'Vinícius Jr.', type: 'goal', isHome: true),
       MatchEvent(minute: "52'", player: 'Salah', type: 'goal', isHome: false),
-      MatchEvent(minute: "61'", player: 'Bellingham (be: Modrić)', type: 'sub', isHome: true),
       MatchEvent(minute: "69'", player: 'Bellingham', type: 'goal', isHome: true),
-    ],
-    highlights: [
-      HighlightClip(title: 'Real Madrid - Liverpool 2-2 | Összefoglaló (Minta)', url: 'https://highlightly.net'),
-    ],
-  ),
-  MatchData(
-    id: 'm2',
-    country: 'Magyarország',
-    league: 'NB I',
-    homeTeam: 'Ferencváros',
-    awayTeam: 'Puskás Akadémia',
-    homeColor: Color(0xFF00E676),
-    awayColor: Color(0xFFFFAB00),
-    homeScore: 3,
-    awayScore: 1,
-    status: "82'",
-    isLive: true,
-    possessionHome: 61,
-    shotsHome: 16,
-    shotsAway: 7,
-    shotsOnTargetHome: 9,
-    shotsOnTargetAway: 3,
-    cornersHome: 7,
-    cornersAway: 2,
-    foulsHome: 10,
-    foulsAway: 14,
-    homeForm: ['GY', 'GY', 'GY', 'D', 'GY'],
-    awayForm: ['GY', 'V', 'GY', 'GY', 'D'],
-    events: [
-      MatchEvent(minute: "19'", player: 'Varga B.', type: 'goal', isHome: true),
-      MatchEvent(minute: "44'", player: 'Nagy Zs.', type: 'goal', isHome: false),
-      MatchEvent(minute: "58'", player: 'Abu Fani', type: 'goal', isHome: true),
-      MatchEvent(minute: "66'", player: 'Favorov', type: 'red', isHome: false),
-      MatchEvent(minute: "77'", player: 'Traoré', type: 'goal', isHome: true),
-    ],
-  ),
-  MatchData(
-    id: 'm3',
-    country: 'Anglia',
-    league: 'Premier League',
-    homeTeam: 'Arsenal',
-    awayTeam: 'Man. City',
-    homeColor: Color(0xFFFF5252),
-    awayColor: Color(0xFF00B0FF),
-    homeScore: 1,
-    awayScore: 0,
-    status: 'VÉGE',
-    isLive: false,
-    isFinished: true,
-    possessionHome: 44,
-    shotsHome: 10,
-    shotsAway: 14,
-    shotsOnTargetHome: 4,
-    shotsOnTargetAway: 5,
-    cornersHome: 4,
-    cornersAway: 6,
-    foulsHome: 12,
-    foulsAway: 8,
-    homeForm: ['GY', 'D', 'GY', 'GY', 'GY'],
-    awayForm: ['GY', 'GY', 'V', 'D', 'V'],
-    events: [
-      MatchEvent(minute: "34'", player: 'Rodri', type: 'yellow', isHome: false),
-      MatchEvent(minute: "86'", player: 'Saka', type: 'goal', isHome: true),
     ],
   ),
 ];
 
 const Map<String, List<StandingRow>> sampleStandings = {
   'Premier League': [
-    StandingRow(pos: 1, team: 'Liverpool', color: Color(0xFFFF1744), played: 12, won: 10, drawn: 1, lost: 1, gf: 27, ga: 10, gd: 17, points: 31, zone: 'ucl', form: ['GY', 'GY', 'GY', 'D', 'GY']),
-    StandingRow(pos: 2, team: 'Man. City', color: Color(0xFF00B0FF), played: 12, won: 8, drawn: 2, lost: 2, gf: 24, ga: 13, gd: 11, points: 26, zone: 'ucl', form: ['GY', 'GY', 'V', 'D', 'V']),
-    StandingRow(pos: 3, team: 'Arsenal', color: Color(0xFFFF5252), played: 12, won: 7, drawn: 3, lost: 2, gf: 21, ga: 12, gd: 9, points: 24, zone: 'ucl', form: ['GY', 'D', 'GY', 'GY', 'GY']),
-    StandingRow(pos: 4, team: 'Chelsea', color: Color(0xFF2979FF), played: 12, won: 6, drawn: 4, lost: 2, gf: 22, ga: 14, gd: 8, points: 22, zone: 'ucl', form: ['D', 'GY', 'GY', 'V', 'GY']),
-    StandingRow(pos: 5, team: 'Brighton', color: Color(0xFF00B0FF), played: 12, won: 6, drawn: 3, lost: 3, gf: 20, ga: 15, gd: 5, points: 21, zone: 'uel', form: ['GY', 'V', 'GY', 'D', 'GY']),
-    StandingRow(pos: 6, team: 'Tottenham', color: Color(0xFF7C4DFF), played: 12, won: 6, drawn: 1, lost: 5, gf: 23, ga: 15, gd: 8, points: 19, zone: 'uel', form: ['V', 'GY', 'V', 'GY', 'V']),
-  ],
-  'Bajnokok Ligája': [
-    StandingRow(pos: 1, team: 'Liverpool', color: Color(0xFFFF1744), played: 5, won: 5, drawn: 0, lost: 0, gf: 13, ga: 2, gd: 11, points: 15, zone: 'ucl', form: ['GY', 'GY', 'GY', 'GY', 'GY']),
-    StandingRow(pos: 2, team: 'Barcelona', color: Color(0xFF2979FF), played: 5, won: 4, drawn: 0, lost: 1, gf: 18, ga: 5, gd: 13, points: 12, zone: 'ucl', form: ['GY', 'GY', 'V', 'GY', 'GY']),
-    StandingRow(pos: 3, team: 'Arsenal', color: Color(0xFFFF5252), played: 5, won: 3, drawn: 1, lost: 1, gf: 8, ga: 2, gd: 6, points: 10, zone: 'ucl', form: ['GY', 'D', 'GY', 'V', 'GY']),
-    StandingRow(pos: 4, team: 'Real Madrid', color: Color(0xFF7C4DFF), played: 5, won: 3, drawn: 0, lost: 2, gf: 11, ga: 9, gd: 2, points: 9, zone: 'ucl', form: ['GY', 'V', 'GY', 'V', 'GY']),
-  ],
-  'Európa Liga': [
-    StandingRow(pos: 1, team: 'Lazio', color: Color(0xFF00B0FF), played: 5, won: 4, drawn: 1, lost: 0, gf: 11, ga: 2, gd: 9, points: 13, zone: 'ucl', form: ['GY', 'GY', 'D', 'GY', 'GY']),
-    StandingRow(pos: 2, team: 'Athletic Club', color: Color(0xFFFF1744), played: 5, won: 4, drawn: 1, lost: 0, gf: 9, ga: 2, gd: 7, points: 13, zone: 'ucl', form: ['GY', 'D', 'GY', 'GY', 'GY']),
-    StandingRow(pos: 3, team: 'Eintracht Frankfurt', color: Color(0xFFFF5252), played: 5, won: 4, drawn: 1, lost: 0, gf: 10, ga: 5, gd: 5, points: 13, zone: 'ucl', form: ['D', 'GY', 'GY', 'GY', 'GY']),
-  ],
-  'Konferencia Liga': [
-    StandingRow(pos: 1, team: 'Chelsea', color: Color(0xFF2979FF), played: 4, won: 4, drawn: 0, lost: 0, gf: 16, ga: 2, gd: 14, points: 12, zone: 'ucl', form: ['GY', 'GY', 'GY', 'GY']),
-    StandingRow(pos: 2, team: 'Legia Warszawa', color: Color(0xFF00E676), played: 4, won: 4, drawn: 0, lost: 0, gf: 11, ga: 3, gd: 8, points: 12, zone: 'ucl', form: ['GY', 'GY', 'GY', 'GY']),
+    StandingRow(pos: 1, team: 'Minta Liverpool (nincs API adat)', color: Color(0xFFFF1744), played: 10, won: 8, drawn: 1, lost: 1, gf: 22, ga: 8, gd: 14, points: 25, zone: 'ucl', form: ['GY', 'GY', 'D', 'GY', 'GY']),
+    StandingRow(pos: 2, team: 'Minta Man. City (nincs API adat)', color: Color(0xFF00B0FF), played: 10, won: 7, drawn: 2, lost: 1, gf: 20, ga: 10, gd: 10, points: 23, zone: 'ucl', form: ['GY', 'D', 'GY', 'GY', 'V']),
   ],
   'La Liga': [
-    StandingRow(pos: 1, team: 'Barcelona', color: Color(0xFF2979FF), played: 13, won: 11, drawn: 0, lost: 2, gf: 40, ga: 12, gd: 28, points: 33, zone: 'ucl', form: ['GY', 'GY', 'V', 'GY', 'V']),
-    StandingRow(pos: 2, team: 'Real Madrid', color: Color(0xFF7C4DFF), played: 13, won: 9, drawn: 3, lost: 1, gf: 27, ga: 11, gd: 16, points: 30, zone: 'ucl', form: ['GY', 'GY', 'GY', 'D', 'GY']),
-    StandingRow(pos: 3, team: 'Atlético Madrid', color: Color(0xFFFF1744), played: 13, won: 7, drawn: 5, lost: 1, gf: 19, ga: 8, gd: 11, points: 26, zone: 'ucl', form: ['GY', 'D', 'GY', 'GY', 'D']),
-    StandingRow(pos: 4, team: 'Villarreal', color: Color(0xFFFFAB00), played: 13, won: 7, drawn: 4, lost: 2, gf: 24, ga: 19, gd: 5, points: 25, zone: 'ucl', form: ['D', 'GY', 'GY', 'D', 'GY']),
-    StandingRow(pos: 5, team: 'Osasuna', color: Color(0xFFFF5252), played: 13, won: 6, drawn: 3, lost: 4, gf: 18, ga: 19, gd: -1, points: 21, zone: 'uel', form: ['V', 'GY', 'D', 'V', 'GY']),
-  ],
-  'Bundesliga': [
-    StandingRow(pos: 1, team: 'Bayern München', color: Color(0xFFFF1744), played: 11, won: 9, drawn: 2, lost: 0, gf: 36, ga: 10, gd: 26, points: 29, zone: 'ucl', form: ['GY', 'GY', 'D', 'GY', 'GY']),
-    StandingRow(pos: 2, team: 'RB Leipzig', color: Color(0xFF00B0FF), played: 11, won: 7, drawn: 3, lost: 1, gf: 19, ga: 9, gd: 10, points: 24, zone: 'ucl', form: ['D', 'GY', 'GY', 'D', 'V']),
-    StandingRow(pos: 3, team: 'Eintracht Frankfurt', color: Color(0xFFFF5252), played: 11, won: 7, drawn: 2, lost: 2, gf: 26, ga: 16, gd: 10, points: 23, zone: 'ucl', form: ['GY', 'GY', 'D', 'GY', 'V']),
-    StandingRow(pos: 4, team: 'Bayer Leverkusen', color: Color(0xFF00E676), played: 11, won: 5, drawn: 5, lost: 1, gf: 23, ga: 17, gd: 6, points: 20, zone: 'ucl', form: ['D', 'D', 'GY', 'D', 'GY']),
-    StandingRow(pos: 5, team: 'Borussia Dortmund', color: Color(0xFFFFAB00), played: 11, won: 6, drawn: 1, lost: 4, gf: 20, ga: 18, gd: 2, points: 19, zone: 'uel', form: ['V', 'GY', 'V', 'GY', 'V']),
-  ],
-  'Serie A': [
-    StandingRow(pos: 1, team: 'Napoli', color: Color(0xFF00B0FF), played: 13, won: 9, drawn: 2, lost: 2, gf: 21, ga: 9, gd: 12, points: 29, zone: 'ucl', form: ['GY', 'D', 'GY', 'GY', 'V']),
-    StandingRow(pos: 2, team: 'Atalanta', color: Color(0xFF2979FF), played: 13, won: 9, drawn: 1, lost: 3, gf: 34, ga: 19, gd: 15, points: 28, zone: 'ucl', form: ['GY', 'GY', 'GY', 'GY', 'V']),
-    StandingRow(pos: 3, team: 'Inter', color: Color(0xFF00E676), played: 13, won: 8, drawn: 4, lost: 1, gf: 29, ga: 15, gd: 14, points: 28, zone: 'ucl', form: ['D', 'GY', 'GY', 'D', 'GY']),
-    StandingRow(pos: 4, team: 'Fiorentina', color: Color(0xFF7C4DFF), played: 13, won: 8, drawn: 4, lost: 1, gf: 25, ga: 10, gd: 15, points: 28, zone: 'ucl', form: ['GY', 'GY', 'GY', 'D', 'GY']),
-  ],
-  'NB I': [
-    StandingRow(pos: 1, team: 'Puskás Akadémia', color: Color(0xFFFFAB00), played: 13, won: 9, drawn: 2, lost: 2, gf: 23, ga: 12, gd: 11, points: 29, zone: 'ucl', form: ['GY', 'V', 'GY', 'GY', 'D']),
-    StandingRow(pos: 2, team: 'Ferencváros', color: Color(0xFF00E676), played: 12, won: 8, drawn: 3, lost: 1, gf: 25, ga: 11, gd: 14, points: 27, zone: 'ucl', form: ['GY', 'GY', 'GY', 'D', 'GY']),
-    StandingRow(pos: 3, team: 'MTK Budapest', color: Color(0xFF00B0FF), played: 13, won: 6, drawn: 4, lost: 3, gf: 19, ga: 14, gd: 5, points: 22, zone: 'uel', form: ['D', 'GY', 'V', 'GY', 'D']),
-    StandingRow(pos: 4, team: 'Paks', color: Color(0xFF00C853), played: 13, won: 6, drawn: 3, lost: 4, gf: 22, ga: 19, gd: 3, points: 21, zone: 'uel', form: ['V', 'GY', 'D', 'GY', 'V']),
+    StandingRow(pos: 1, team: 'Minta Barcelona (nincs API adat)', color: Color(0xFF2979FF), played: 10, won: 8, drawn: 1, lost: 1, gf: 28, ga: 9, gd: 19, points: 25, zone: 'ucl', form: ['GY', 'GY', 'GY', 'D', 'GY']),
+    StandingRow(pos: 2, team: 'Minta Real Madrid (nincs API adat)', color: Color(0xFF7C4DFF), played: 10, won: 7, drawn: 2, lost: 1, gf: 21, ga: 8, gd: 13, points: 23, zone: 'ucl', form: ['GY', 'D', 'GY', 'GY', 'GY']),
   ],
 };
 
@@ -2797,11 +2776,8 @@ const sampleTopScorers = {
   'Premier League': [
     TopScorerRow(rank: 1, player: 'Erling Haaland', team: 'Man. City', goals: 12, assists: 1),
     TopScorerRow(rank: 2, player: 'Mohamed Salah', team: 'Liverpool', goals: 10, assists: 6),
-    TopScorerRow(rank: 3, player: 'Cole Palmer', team: 'Chelsea', goals: 7, assists: 5),
   ],
   'NB I': [
     TopScorerRow(rank: 1, player: 'Varga Barnabás', team: 'Ferencváros', goals: 8, assists: 3),
-    TopScorerRow(rank: 2, player: 'Nagy Zsolt', team: 'Puskás Akadémia', goals: 7, assists: 4),
-    TopScorerRow(rank: 3, player: 'Böde Dániel', team: 'Paks', goals: 6, assists: 2),
   ],
 };
