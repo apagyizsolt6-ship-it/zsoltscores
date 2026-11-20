@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:zsoltscores/api_service.dart';
 import 'package:zsoltscores/tabs/matches_tab.dart';
+import 'package:zsoltscores/theme/app_theme.dart';
 import 'package:zsoltscores/widgets/common_widgets.dart';
 
 class TeamProfileScreen extends StatefulWidget {
@@ -41,13 +42,14 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
   }
 
   Widget _badge(String code) {
+    final p = AppThemeController.instance.palette;
     Color bg;
     if (code == 'GY') {
-      bg = const Color(0xFF00E676);
+      bg = p.primaryAccent;
     } else if (code == 'D') {
-      bg = const Color(0xFFFFAB00);
+      bg = p.goldAccent;
     } else {
-      bg = const Color(0xFFFF1744);
+      bg = p.liveRed;
     }
     return Container(
       width: 24,
@@ -61,18 +63,19 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final p = AppThemeController.instance.palette;
     final effectiveForm = widget.form.isNotEmpty ? widget.form : const ['GY', 'D', 'GY', 'V', 'GY'];
     final pts = MatchData.formPoints(effectiveForm);
 
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.teamName),
-        backgroundColor: const Color(0xFF1C2541),
+        backgroundColor: p.cardElevated,
         actions: [
           IconButton(
             tooltip: _isFav ? 'Eltávolítás a kedvenc csapatokból' : 'Hozzáadás a kedvenc csapatokhoz',
             onPressed: _toggleFav,
-            icon: Icon(_isFav ? Icons.star : Icons.star_border, color: const Color(0xFFFFAB00)),
+            icon: Icon(_isFav ? Icons.star_rounded : Icons.star_outline_rounded, color: p.goldAccent),
           ),
         ],
       ),
@@ -82,8 +85,9 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
           Container(
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [widget.accentColor.withAlpha(80), const Color(0xFF1C2541)]),
+              gradient: LinearGradient(colors: [widget.accentColor.withAlpha(80), p.cardElevated]),
               borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: p.borderSubtle),
             ),
             child: Row(
               children: [
@@ -108,7 +112,11 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(color: const Color(0xFF1C2541), borderRadius: BorderRadius.circular(16)),
+            decoration: BoxDecoration(
+              color: p.cardElevated,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: p.borderSubtle),
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -116,7 +124,7 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text('Utolsó 5 meccs formája', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
-                    Text('$pts pont / 15', style: const TextStyle(color: Color(0xFF00E676), fontWeight: FontWeight.w900)),
+                    Text('$pts pont / 15', style: TextStyle(color: p.primaryAccent, fontWeight: FontWeight.w900)),
                   ],
                 ),
                 const SizedBox(height: 10),
@@ -130,13 +138,21 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
           if (widget.relatedMatches.isEmpty)
             Container(
               padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: const Color(0xFF1C2541), borderRadius: BorderRadius.circular(14)),
+              decoration: BoxDecoration(
+                color: p.cardElevated,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: p.borderSubtle),
+              ),
               child: const Text('A kiválasztott napon nincs meccs a csapattal.', style: TextStyle(color: Colors.white60)),
             )
           else
             ...widget.relatedMatches.map((m) => Container(
                   margin: const EdgeInsets.only(bottom: 8),
-                  decoration: BoxDecoration(color: const Color(0xFF131D3B), borderRadius: BorderRadius.circular(14)),
+                  decoration: BoxDecoration(
+                    color: p.cardBg,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: p.borderSubtle),
+                  ),
                   child: MatchCard(
                     match: m,
                     isFavorite: false,
@@ -218,20 +234,22 @@ class _StandingsTabState extends State<StandingsTab> {
   }
 
   Color _zoneColor(String zone) {
-    if (zone == 'ucl') return const Color(0xFF00E676);
-    if (zone == 'uel') return const Color(0xFF00B0FF);
-    if (zone == 'rel') return const Color(0xFFFF1744);
+    final p = AppThemeController.instance.palette;
+    if (zone == 'ucl') return p.primaryAccent;
+    if (zone == 'uel') return p.secondaryAccent;
+    if (zone == 'rel') return p.liveRed;
     return Colors.transparent;
   }
 
   Widget _miniFormDot(String code) {
+    final p = AppThemeController.instance.palette;
     Color bg;
     if (code == 'GY') {
-      bg = const Color(0xFF00E676);
+      bg = p.primaryAccent;
     } else if (code == 'D') {
-      bg = const Color(0xFFFFAB00);
+      bg = p.goldAccent;
     } else {
-      bg = const Color(0xFFFF1744);
+      bg = p.liveRed;
     }
     return Container(
       width: 14,
@@ -273,6 +291,7 @@ class _StandingsTabState extends State<StandingsTab> {
 
   @override
   Widget build(BuildContext context) {
+    final p = AppThemeController.instance.palette;
     final leagues = SportsApiService.highlightlyLeagueIds.keys.toList();
     final scorers = sampleTopScorers[selectedLeague] ??
         const [
@@ -286,9 +305,10 @@ class _StandingsTabState extends State<StandingsTab> {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(colors: [Color(0xFF1C2541), Color(0xFF3A506B)]),
-              borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(colors: [p.headerStart, p.headerEnd]),
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24)),
+              border: Border(bottom: BorderSide(color: p.borderSubtle)),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -302,7 +322,7 @@ class _StandingsTabState extends State<StandingsTab> {
                       _isLiveRows
                           ? '${ApiConfig.providerName} • ${_rows.length} csapatos állás'
                           : '${ApiConfig.providerName} • Részletes állás, gólok & forma',
-                      style: TextStyle(fontSize: 12, color: _isLiveRows ? const Color(0xFF00E676) : Colors.amberAccent),
+                      style: TextStyle(fontSize: 12, color: _isLiveRows ? p.primaryAccent : Colors.amberAccent),
                     ),
                   ],
                 ),
@@ -324,20 +344,20 @@ class _StandingsTabState extends State<StandingsTab> {
               ],
             ),
           ),
-          if (_loading) const LinearProgressIndicator(color: Color(0xFF00E676), backgroundColor: Colors.transparent),
+          if (_loading) LinearProgressIndicator(color: p.primaryAccent, backgroundColor: Colors.transparent),
           if (_statusBanner != null)
             Container(
               width: double.infinity,
               margin: const EdgeInsets.fromLTRB(14, 8, 14, 0),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
               decoration: BoxDecoration(
-                color: _isLiveRows ? const Color(0xFF00E676).withAlpha(24) : Colors.amber.withAlpha(30),
+                color: _isLiveRows ? p.primaryAccent.withAlpha(24) : Colors.amber.withAlpha(30),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: _isLiveRows ? const Color(0xFF00E676).withAlpha(90) : Colors.amber.withAlpha(120)),
+                border: Border.all(color: _isLiveRows ? p.primaryAccent.withAlpha(90) : Colors.amber.withAlpha(120)),
               ),
               child: Text(
                 _statusBanner!,
-                style: TextStyle(fontSize: 11, color: _isLiveRows ? const Color(0xFF00E676) : Colors.amberAccent),
+                style: TextStyle(fontSize: 11, color: _isLiveRows ? p.primaryAccent : Colors.amberAccent),
                 textAlign: TextAlign.center,
               ),
             ),
@@ -355,8 +375,8 @@ class _StandingsTabState extends State<StandingsTab> {
                   child: ChoiceChip(
                     label: Text(l, style: const TextStyle(fontSize: 12)),
                     selected: isSelected,
-                    selectedColor: const Color(0xFF00E676),
-                    backgroundColor: const Color(0xFF1C2541),
+                    selectedColor: p.primaryAccent,
+                    backgroundColor: p.cardElevated,
                     labelStyle: TextStyle(color: isSelected ? Colors.black : Colors.white, fontWeight: FontWeight.bold),
                     onSelected: (_) {
                       setState(() => selectedLeague = l);
@@ -375,8 +395,8 @@ class _StandingsTabState extends State<StandingsTab> {
                 ChoiceChip(
                   label: const Text('Összes', style: TextStyle(fontSize: 11)),
                   selected: !showScorers && venueMode == 'all',
-                  selectedColor: const Color(0xFF00B0FF),
-                  backgroundColor: const Color(0xFF1C2541),
+                  selectedColor: p.secondaryAccent,
+                  backgroundColor: p.cardElevated,
                   labelStyle: TextStyle(color: (!showScorers && venueMode == 'all') ? Colors.black : Colors.white, fontWeight: FontWeight.bold),
                   onSelected: (_) {
                     setState(() {
@@ -390,8 +410,8 @@ class _StandingsTabState extends State<StandingsTab> {
                 ChoiceChip(
                   label: const Text('Hazai', style: TextStyle(fontSize: 11)),
                   selected: !showScorers && venueMode == 'home',
-                  selectedColor: const Color(0xFF00B0FF),
-                  backgroundColor: const Color(0xFF1C2541),
+                  selectedColor: p.secondaryAccent,
+                  backgroundColor: p.cardElevated,
                   labelStyle: TextStyle(color: (!showScorers && venueMode == 'home') ? Colors.black : Colors.white, fontWeight: FontWeight.bold),
                   onSelected: (_) {
                     setState(() {
@@ -405,8 +425,8 @@ class _StandingsTabState extends State<StandingsTab> {
                 ChoiceChip(
                   label: const Text('Vendég', style: TextStyle(fontSize: 11)),
                   selected: !showScorers && venueMode == 'away',
-                  selectedColor: const Color(0xFF00B0FF),
-                  backgroundColor: const Color(0xFF1C2541),
+                  selectedColor: p.secondaryAccent,
+                  backgroundColor: p.cardElevated,
                   labelStyle: TextStyle(color: (!showScorers && venueMode == 'away') ? Colors.black : Colors.white, fontWeight: FontWeight.bold),
                   onSelected: (_) {
                     setState(() {
@@ -420,8 +440,8 @@ class _StandingsTabState extends State<StandingsTab> {
                 ChoiceChip(
                   label: const Text('⚽ Góllövők', style: TextStyle(fontSize: 11)),
                   selected: showScorers,
-                  selectedColor: const Color(0xFFFFAB00),
-                  backgroundColor: const Color(0xFF1C2541),
+                  selectedColor: p.goldAccent,
+                  backgroundColor: p.cardElevated,
                   labelStyle: TextStyle(color: showScorers ? Colors.black : Colors.white, fontWeight: FontWeight.bold),
                   onSelected: (_) => setState(() => showScorers = true),
                 ),
@@ -472,9 +492,11 @@ class _StandingsTabState extends State<StandingsTab> {
                             margin: const EdgeInsets.only(bottom: 8),
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF1C2541),
+                              color: p.cardElevated,
                               borderRadius: BorderRadius.circular(14),
-                              border: Border(left: BorderSide(color: _zoneColor(r.zone), width: 4)),
+                              border: Border(
+                                left: BorderSide(color: _zoneColor(r.zone), width: 4),
+                              ),
                             ),
                             child: Column(
                               children: [
@@ -504,7 +526,7 @@ class _StandingsTabState extends State<StandingsTab> {
                                     SizedBox(width: 58, child: Text(wdlText, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 11))),
                                     SizedBox(width: 44, child: Text(goalsText, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 11))),
                                     SizedBox(width: 34, child: Text(r.gd > 0 ? '+${r.gd}' : '${r.gd}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 11.5))),
-                                    SizedBox(width: 32, child: Text('${r.points}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF00E676), fontSize: 13))),
+                                    SizedBox(width: 32, child: Text('${r.points}', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w900, color: p.primaryAccent, fontSize: 13))),
                                   ],
                                 ),
                                 if (r.form.isNotEmpty) ...[
@@ -535,10 +557,14 @@ class _StandingsTabState extends State<StandingsTab> {
                   return Container(
                     margin: const EdgeInsets.only(bottom: 10),
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    decoration: BoxDecoration(color: const Color(0xFF1C2541), borderRadius: BorderRadius.circular(14)),
+                    decoration: BoxDecoration(
+                      color: p.cardElevated,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: p.borderSubtle),
+                    ),
                     child: Row(
                       children: [
-                        Text('${sc.rank}.', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFFFAB00))),
+                        Text('${sc.rank}.', style: TextStyle(fontWeight: FontWeight.bold, color: p.goldAccent)),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Column(
@@ -549,7 +575,7 @@ class _StandingsTabState extends State<StandingsTab> {
                             ],
                           ),
                         ),
-                        Text('⚽ ${sc.goals}', style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF00E676))),
+                        Text('⚽ ${sc.goals}', style: TextStyle(fontWeight: FontWeight.w900, color: p.primaryAccent)),
                         const SizedBox(width: 12),
                         Text('🅰️ ${sc.assists}', style: const TextStyle(fontSize: 12, color: Colors.white70)),
                       ],
