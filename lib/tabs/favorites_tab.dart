@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:zsoltscores/api_service.dart';
 import 'package:zsoltscores/tabs/matches_tab.dart';
+import 'package:zsoltscores/theme/app_theme.dart';
 
 class FavoritesTab extends StatelessWidget {
   final List<MatchData> allMatches;
@@ -18,6 +19,7 @@ class FavoritesTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = AppThemeController.instance.palette;
     final favMatches = allMatches.where((m) {
       return favoriteIds.contains(m.id) ||
           DisplayPrefs.isFavoriteTeam(m.homeTeam) ||
@@ -30,9 +32,10 @@ class FavoritesTab extends StatelessWidget {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(20),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(colors: [Color(0xFF1C2541), Color(0xFF3A506B)]),
-              borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(colors: [p.headerStart, p.headerEnd]),
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24)),
+              border: Border(bottom: BorderSide(color: p.borderSubtle)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -70,9 +73,9 @@ class FavoritesTab extends StatelessWidget {
                       return Container(
                         margin: const EdgeInsets.only(bottom: 10),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF131D3B),
+                          color: p.cardBg,
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: const Color(0xFFFFAB00).withAlpha(80)),
+                          border: Border.all(color: p.goldAccent.withAlpha(80)),
                         ),
                         child: MatchCard(
                           match: match,
