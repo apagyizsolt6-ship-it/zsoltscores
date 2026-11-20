@@ -17,6 +17,34 @@ class FavoritesTab extends StatelessWidget {
     required this.onToggleFavorite,
   });
 
+  Widget _summaryPill(AppPalette p, String label, String value, Color accent) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 8),
+        decoration: BoxDecoration(
+          color: p.cardElevated,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: accent.withAlpha(85)),
+        ),
+        child: Column(
+          children: [
+            Text(
+              value,
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: accent),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 10.5, color: Colors.white60, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = AppThemeController.instance.palette;
@@ -26,6 +54,7 @@ class FavoritesTab extends StatelessWidget {
           DisplayPrefs.isFavoriteTeam(m.awayTeam);
     }).toList();
     final liveFavCount = favMatches.where((m) => m.isLive).length;
+    final finishedFavCount = favMatches.where((m) => m.isFinished).length;
 
     return SafeArea(
       child: Column(
@@ -74,7 +103,20 @@ class FavoritesTab extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 14),
+          if (favMatches.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+              child: Row(
+                children: [
+                  _summaryPill(p, 'Összes', '${favMatches.length}', p.goldAccent),
+                  const SizedBox(width: 8),
+                  _summaryPill(p, 'Élőben', '$liveFavCount', p.primaryAccent),
+                  const SizedBox(width: 8),
+                  _summaryPill(p, 'Lezárt', '$finishedFavCount', p.secondaryAccent),
+                ],
+              ),
+            ),
+          const SizedBox(height: 8),
           Expanded(
             child: favMatches.isEmpty
                 ? const Center(
