@@ -66,6 +66,9 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
     final p = AppThemeController.instance.palette;
     final effectiveForm = widget.form.isNotEmpty ? widget.form : const ['GY', 'D', 'GY', 'V', 'GY'];
     final pts = MatchData.formPoints(effectiveForm);
+    final wCount = effectiveForm.where((c) => c == 'GY').length;
+    final dCount = effectiveForm.where((c) => c == 'D').length;
+    final lCount = effectiveForm.where((c) => c == 'V').length;
 
     return Scaffold(
       appBar: AppBar(
@@ -85,8 +88,12 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
           Container(
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [widget.accentColor.withAlpha(80), p.cardElevated]),
-              borderRadius: BorderRadius.circular(20),
+              gradient: LinearGradient(
+                colors: [widget.accentColor.withAlpha(85), p.cardElevated],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(22),
               border: Border.all(color: p.borderSubtle),
             ),
             child: Row(
@@ -109,7 +116,7 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
@@ -129,6 +136,58 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
                 ),
                 const SizedBox(height: 10),
                 Row(children: effectiveForm.map(_badge).toList()),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 7),
+                        decoration: BoxDecoration(
+                          color: p.scaffoldBg.withAlpha(170),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Column(
+                          children: [
+                            Text('$wCount', style: TextStyle(fontWeight: FontWeight.w900, color: p.primaryAccent, fontSize: 13)),
+                            const Text('Győzelem', style: TextStyle(fontSize: 10, color: Colors.white54)),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 7),
+                        decoration: BoxDecoration(
+                          color: p.scaffoldBg.withAlpha(170),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Column(
+                          children: [
+                            Text('$dCount', style: TextStyle(fontWeight: FontWeight.w900, color: p.goldAccent, fontSize: 13)),
+                            const Text('Döntetlen', style: TextStyle(fontSize: 10, color: Colors.white54)),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 7),
+                        decoration: BoxDecoration(
+                          color: p.scaffoldBg.withAlpha(170),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Column(
+                          children: [
+                            Text('$lCount', style: TextStyle(fontWeight: FontWeight.w900, color: p.liveRed, fontSize: 13)),
+                            const Text('Vereség', style: TextStyle(fontSize: 10, color: Colors.white54)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -239,6 +298,40 @@ class _StandingsTabState extends State<StandingsTab> {
     if (zone == 'uel') return p.secondaryAccent;
     if (zone == 'rel') return p.liveRed;
     return Colors.transparent;
+  }
+
+  Widget _posBadge(int pos, AppPalette p) {
+    if (pos == 1) {
+      return Container(
+        width: 22,
+        height: 22,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(color: const Color(0xFFFFD54F).withAlpha(35), borderRadius: BorderRadius.circular(6)),
+        child: const Text('🥇', style: TextStyle(fontSize: 12)),
+      );
+    }
+    if (pos == 2) {
+      return Container(
+        width: 22,
+        height: 22,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(6)),
+        child: const Text('🥈', style: TextStyle(fontSize: 12)),
+      );
+    }
+    if (pos == 3) {
+      return Container(
+        width: 22,
+        height: 22,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(color: const Color(0xFFFF8A65).withAlpha(30), borderRadius: BorderRadius.circular(6)),
+        child: const Text('🥉', style: TextStyle(fontSize: 12)),
+      );
+    }
+    return SizedBox(
+      width: 22,
+      child: Text('$pos.', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: p.primaryAccent.withAlpha(210))),
+    );
   }
 
   Widget _miniFormDot(String code) {
@@ -453,7 +546,7 @@ class _StandingsTabState extends State<StandingsTab> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               child: Row(
                 children: const [
-                  SizedBox(width: 24, child: Text('#', style: TextStyle(color: Colors.white54, fontSize: 11))),
+                  SizedBox(width: 26, child: Text('#', style: TextStyle(color: Colors.white54, fontSize: 11))),
                   Expanded(child: Text('Csapat', style: TextStyle(color: Colors.white54, fontSize: 11))),
                   SizedBox(width: 24, child: Text('M', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 11))),
                   SizedBox(width: 58, child: Text('GY/D/V', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 10.5))),
@@ -484,6 +577,7 @@ class _StandingsTabState extends State<StandingsTab> {
                         final hasWdl = (r.won + r.drawn + r.lost) > 0;
                         final wdlText = hasWdl ? '${r.won}/${r.drawn}/${r.lost}' : '-';
                         final goalsText = (r.gf > 0 || r.ga > 0) ? '${r.gf}:${r.ga}' : '-';
+                        final isTop3 = r.pos <= 3;
 
                         return InkWell(
                           borderRadius: BorderRadius.circular(14),
@@ -492,7 +586,7 @@ class _StandingsTabState extends State<StandingsTab> {
                             margin: const EdgeInsets.only(bottom: 8),
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                             decoration: BoxDecoration(
-                              color: p.cardElevated,
+                              color: isTop3 ? p.cardElevated : p.cardBg,
                               borderRadius: BorderRadius.circular(14),
                               border: Border(
                                 left: BorderSide(color: _zoneColor(r.zone), width: 4),
@@ -502,7 +596,8 @@ class _StandingsTabState extends State<StandingsTab> {
                               children: [
                                 Row(
                                   children: [
-                                    SizedBox(width: 22, child: Text('${r.pos}.', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                                    _posBadge(r.pos, p),
+                                    const SizedBox(width: 4),
                                     CachedTeamLogo(
                                       teamName: r.team,
                                       fallbackColor: r.color,
@@ -515,7 +610,7 @@ class _StandingsTabState extends State<StandingsTab> {
                                       child: Text(
                                         isFav ? '★ ${r.team}' : r.team,
                                         style: TextStyle(
-                                          fontWeight: FontWeight.w700,
+                                          fontWeight: isTop3 || isFav ? FontWeight.w800 : FontWeight.w700,
                                           fontSize: 12.5,
                                           color: isFav ? const Color(0xFFFFD54F) : Colors.white,
                                         ),
@@ -554,29 +649,55 @@ class _StandingsTabState extends State<StandingsTab> {
                 itemCount: scorers.length,
                 itemBuilder: (context, idx) {
                   final sc = scorers[idx];
+                  final isTop = sc.rank == 1;
                   return Container(
                     margin: const EdgeInsets.only(bottom: 10),
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                     decoration: BoxDecoration(
                       color: p.cardElevated,
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: p.borderSubtle),
+                      border: Border.all(
+                        color: isTop ? p.goldAccent.withAlpha(120) : p.borderSubtle,
+                      ),
                     ),
                     child: Row(
                       children: [
-                        Text('${sc.rank}.', style: TextStyle(fontWeight: FontWeight.bold, color: p.goldAccent)),
+                        Container(
+                          width: 26,
+                          height: 26,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: isTop ? p.goldAccent.withAlpha(35) : Colors.white10,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${sc.rank}.',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w900,
+                              color: isTop ? p.goldAccent : Colors.white70,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(sc.player, style: const TextStyle(fontWeight: FontWeight.bold)),
+                              Text(sc.player, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
                               Text(sc.team, style: const TextStyle(fontSize: 11, color: Colors.white60)),
                             ],
                           ),
                         ),
-                        Text('⚽ ${sc.goals}', style: TextStyle(fontWeight: FontWeight.w900, color: p.primaryAccent)),
-                        const SizedBox(width: 12),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: p.primaryAccent.withAlpha(20),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text('⚽ ${sc.goals}', style: TextStyle(fontWeight: FontWeight.w900, color: p.primaryAccent, fontSize: 12)),
+                        ),
+                        const SizedBox(width: 8),
                         Text('🅰️ ${sc.assists}', style: const TextStyle(fontSize: 12, color: Colors.white70)),
                       ],
                     ),
