@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide CollapseMode;
 import 'package:zsoltscores/api_service.dart';
 import 'package:zsoltscores/screens/match_stats_screen.dart';
 import 'package:zsoltscores/widgets/common_widgets.dart';
