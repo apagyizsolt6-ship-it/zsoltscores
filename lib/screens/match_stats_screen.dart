@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:zsoltscores/api_service.dart';
+import 'package:zsoltscores/theme/app_theme.dart';
 import 'package:zsoltscores/widgets/common_widgets.dart';
 
 class MatchStatsScreen extends StatefulWidget {
@@ -62,13 +63,14 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
   }
 
   Widget _formBadge(String code) {
+    final p = AppThemeController.instance.palette;
     Color bg;
     if (code == 'GY') {
-      bg = const Color(0xFF00E676);
+      bg = p.primaryAccent;
     } else if (code == 'D') {
-      bg = const Color(0xFFFFAB00);
+      bg = p.goldAccent;
     } else {
-      bg = const Color(0xFFFF1744);
+      bg = p.liveRed;
     }
     return Container(
       width: 22,
@@ -90,6 +92,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final p = AppThemeController.instance.palette;
     final intervalSec = ApiConfig.isStatPal ? 15 : 30;
     final updClock = SportsApiService.formatClock(_updatedAt);
     final sortedEvents = (List<MatchEvent>.of(_match.events)
@@ -123,14 +126,14 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                 ],
               ),
               if (_fromCache)
-                Text('Gyorsítótárból (${ApiConfig.providerName}) • Frissítve: $updClock', style: const TextStyle(fontSize: 11, color: Color(0xFF00B0FF)))
+                Text('Gyorsítótárból (${ApiConfig.providerName}) • Frissítve: $updClock', style: TextStyle(fontSize: 11, color: p.secondaryAccent))
               else if (_match.isLive && _match.isFromApi)
-                Text('Élő • $intervalSec mp • Frissítve: $updClock', style: const TextStyle(fontSize: 11, color: Color(0xFF00E676)))
+                Text('Élő • $intervalSec mp • Frissítve: $updClock', style: TextStyle(fontSize: 11, color: p.primaryAccent))
               else
                 Text('Frissítve: $updClock', style: const TextStyle(fontSize: 11, color: Colors.white60)),
             ],
           ),
-          backgroundColor: const Color(0xFF1C2541),
+          backgroundColor: p.cardElevated,
           actions: [
             IconButton(
               tooltip: 'Eredmény másolása',
@@ -145,13 +148,25 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
         ),
         body: Column(
           children: [
-            if (_loadingDetails) const LinearProgressIndicator(color: Color(0xFF00E676), backgroundColor: Colors.transparent),
+            if (_loadingDetails) LinearProgressIndicator(color: p.primaryAccent, backgroundColor: Colors.transparent),
             Container(
               margin: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 18),
               decoration: BoxDecoration(
-                gradient: LinearGradient(colors: [_match.homeColor.withAlpha(75), const Color(0xFF1C2541), _match.awayColor.withAlpha(75)]),
-                borderRadius: BorderRadius.circular(20),
+                color: p.cardElevated,
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(
+                  color: _match.isLive ? p.primaryAccent.withAlpha(110) : p.borderSubtle,
+                ),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    _match.homeColor.withAlpha(55),
+                    p.cardElevated,
+                    _match.awayColor.withAlpha(55),
+                  ],
+                ),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -159,35 +174,59 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                   Expanded(
                     child: Column(
                       children: [
-                        CachedTeamLogo(teamName: _match.homeTeam, fallbackColor: _match.homeColor, logoUrl: _match.homeLogo, radius: 22),
-                        const SizedBox(height: 6),
-                        Text(_match.homeTeam, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold)),
+                        CachedTeamLogo(teamName: _match.homeTeam, fallbackColor: _match.homeColor, logoUrl: _match.homeLogo, radius: 24),
+                        const SizedBox(height: 8),
+                        Text(_match.homeTeam, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800)),
                         if (_match.homeForm.isNotEmpty) ...[
-                          const SizedBox(height: 5),
+                          const SizedBox(height: 6),
                           Row(mainAxisAlignment: MainAxisAlignment.center, children: _match.homeForm.map(_formBadge).toList()),
                           const SizedBox(height: 3),
-                          Text('${MatchData.formPoints(_match.homeForm)}p / 5 meccs', style: const TextStyle(fontSize: 10, color: Colors.white60)),
+                          Text('${MatchData.formPoints(_match.homeForm)}p / 5 meccs', style: const TextStyle(fontSize: 10, color: Colors.white54)),
                         ],
                       ],
                     ),
                   ),
-                  Column(
-                    children: [
-                      Text('${_match.homeScore} : ${_match.awayScore}', style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: Color(0xFF00E676))),
-                      Text(_match.isLive ? 'ÉLŐ • ${_match.status}' : _match.status, style: const TextStyle(fontSize: 12, color: Colors.white70)),
-                    ],
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withAlpha(85),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.white12),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          '${_match.homeScore} : ${_match.awayScore}',
+                          style: TextStyle(
+                            fontSize: 30,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.2,
+                            color: _match.isLive ? p.primaryAccent : Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _match.isLive ? 'ÉLŐ • ${_match.status}' : _match.status,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: _match.isLive ? p.primaryAccent : Colors.white60,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   Expanded(
                     child: Column(
                       children: [
-                        CachedTeamLogo(teamName: _match.awayTeam, fallbackColor: _match.awayColor, logoUrl: _match.awayLogo, radius: 22),
-                        const SizedBox(height: 6),
-                        Text(_match.awayTeam, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold)),
+                        CachedTeamLogo(teamName: _match.awayTeam, fallbackColor: _match.awayColor, logoUrl: _match.awayLogo, radius: 24),
+                        const SizedBox(height: 8),
+                        Text(_match.awayTeam, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800)),
                         if (_match.awayForm.isNotEmpty) ...[
-                          const SizedBox(height: 5),
+                          const SizedBox(height: 6),
                           Row(mainAxisAlignment: MainAxisAlignment.center, children: _match.awayForm.map(_formBadge).toList()),
                           const SizedBox(height: 3),
-                          Text('${MatchData.formPoints(_match.awayForm)}p / 5 meccs', style: const TextStyle(fontSize: 10, color: Colors.white60)),
+                          Text('${MatchData.formPoints(_match.awayForm)}p / 5 meccs', style: const TextStyle(fontSize: 10, color: Colors.white54)),
                         ],
                       ],
                     ),
@@ -200,11 +239,11 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 child: Text(_match.detailNote!, style: const TextStyle(fontSize: 11.5, color: Colors.amberAccent), textAlign: TextAlign.center),
               ),
-            const TabBar(
-              indicatorColor: Color(0xFF00E676),
-              labelColor: Color(0xFF00E676),
+            TabBar(
+              indicatorColor: p.primaryAccent,
+              labelColor: p.primaryAccent,
               unselectedLabelColor: Colors.white60,
-              tabs: [
+              tabs: const [
                 Tab(text: 'Statisztika'),
                 Tab(text: 'Idővonal'),
                 Tab(text: 'Felállás'),
@@ -231,13 +270,17 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                         ..._match.h2hFixtures.map((h) => Container(
                               margin: const EdgeInsets.only(bottom: 6),
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                              decoration: BoxDecoration(color: const Color(0xFF1C2541), borderRadius: BorderRadius.circular(12)),
+                              decoration: BoxDecoration(
+                                color: p.cardElevated,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: p.borderSubtle),
+                              ),
                               child: Row(
                                 children: [
                                   Text(h.dateLabel, style: const TextStyle(fontSize: 11, color: Colors.white54)),
                                   const SizedBox(width: 8),
                                   Expanded(child: Text('${h.homeTeam} - ${h.awayTeam}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
-                                  Text(h.scoreLabel, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Color(0xFF00E676))),
+                                  Text(h.scoreLabel, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: p.primaryAccent)),
                                 ],
                               ),
                             )),
@@ -274,10 +317,14 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                                   return Container(
                                     margin: const EdgeInsets.only(bottom: 10),
                                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                    decoration: BoxDecoration(color: const Color(0xFF1C2541), borderRadius: BorderRadius.circular(14)),
+                                    decoration: BoxDecoration(
+                                      color: p.cardElevated,
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(color: p.borderSubtle),
+                                    ),
                                     child: Row(
                                       children: [
-                                        Text(ev.minute, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00E676))),
+                                        Text(ev.minute, style: TextStyle(fontWeight: FontWeight.bold, color: p.primaryAccent)),
                                         const SizedBox(width: 10),
                                         Text(icon, style: const TextStyle(fontSize: 16)),
                                         const SizedBox(width: 10),
@@ -310,22 +357,22 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                         const SizedBox(height: 6),
                         Text('${_match.homeTeam} – Kezdő (${_match.homeLineup!.formation})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                         const SizedBox(height: 6),
-                        ..._match.homeLineup!.starters.map((p) => _lineupTile(p, _match.homeColor)),
+                        ..._match.homeLineup!.starters.map((pl) => _lineupTile(pl, _match.homeColor)),
                         if (_match.homeLineup!.substitutes.isNotEmpty) ...[
                           const SizedBox(height: 8),
                           const Text('Cserék', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: Colors.white70)),
-                          ..._match.homeLineup!.substitutes.map((p) => _lineupTile(p, Colors.blueGrey)),
+                          ..._match.homeLineup!.substitutes.map((pl) => _lineupTile(pl, Colors.blueGrey)),
                         ],
                       ],
                       if (_match.awayLineup != null) ...[
                         const SizedBox(height: 16),
                         Text('${_match.awayTeam} – Kezdő (${_match.awayLineup!.formation})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                         const SizedBox(height: 6),
-                        ..._match.awayLineup!.starters.map((p) => _lineupTile(p, _match.awayColor)),
+                        ..._match.awayLineup!.starters.map((pl) => _lineupTile(pl, _match.awayColor)),
                         if (_match.awayLineup!.substitutes.isNotEmpty) ...[
                           const SizedBox(height: 8),
                           const Text('Cserék', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: Colors.white70)),
-                          ..._match.awayLineup!.substitutes.map((p) => _lineupTile(p, Colors.blueGrey)),
+                          ..._match.awayLineup!.substitutes.map((pl) => _lineupTile(pl, Colors.blueGrey)),
                         ],
                       ],
                     ],
@@ -347,12 +394,12 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                           itemBuilder: (context, idx) {
                             final clip = _match.highlights[idx];
                             return Card(
-                              color: const Color(0xFF1C2541),
+                              color: p.cardElevated,
                               margin: const EdgeInsets.only(bottom: 12),
                               child: ListTile(
-                                leading: const Icon(Icons.play_circle_fill, color: Color(0xFF00E676), size: 36),
+                                leading: Icon(Icons.play_circle_fill, color: p.primaryAccent, size: 36),
                                 title: Text(clip.title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                                subtitle: Text(clip.url, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Color(0xFF00B0FF))),
+                                subtitle: Text(clip.url, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: p.secondaryAccent)),
                                 trailing: const Icon(Icons.copy, size: 18),
                                 onTap: () {
                                   Clipboard.setData(ClipboardData(text: clip.url));
@@ -372,6 +419,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
   }
 
   Widget _eventFilterChip(String label, String key) {
+    final p = AppThemeController.instance.palette;
     final active = _eventFilter == key;
     return Expanded(
       child: GestureDetector(
@@ -380,8 +428,9 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
           padding: const EdgeInsets.symmetric(vertical: 6),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: active ? const Color(0xFF00E676) : const Color(0xFF1C2541),
+            color: active ? p.primaryAccent : p.cardElevated,
             borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: active ? p.primaryAccent : p.borderSubtle),
           ),
           child: Text(
             label,
@@ -396,60 +445,89 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
     );
   }
 
-  Widget _lineupTile(LineupPlayer p, Color badgeColor) {
+  Widget _lineupTile(LineupPlayer pl, Color badgeColor) {
+    final p = AppThemeController.instance.palette;
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(color: const Color(0xFF1C2541), borderRadius: BorderRadius.circular(10)),
+      decoration: BoxDecoration(
+        color: p.cardElevated,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: p.borderSubtle),
+      ),
       child: Row(
         children: [
           CircleAvatar(
             radius: 12,
             backgroundColor: badgeColor,
             child: Text(
-              p.number.isNotEmpty ? p.number : '•',
+              pl.number.isNotEmpty ? pl.number : '•',
               style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11),
             ),
           ),
           const SizedBox(width: 10),
-          Expanded(child: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
-          if (p.position.isNotEmpty)
-            Text(p.position, style: const TextStyle(fontSize: 11, color: Colors.white54, fontWeight: FontWeight.bold)),
+          Expanded(child: Text(pl.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
+          if (pl.position.isNotEmpty)
+            Text(pl.position, style: const TextStyle(fontSize: 11, color: Colors.white54, fontWeight: FontWeight.bold)),
         ],
       ),
     );
   }
 
   Widget _statBar(String label, int homeVal, int awayVal) {
+    final p = AppThemeController.instance.palette;
     final total = (homeVal + awayVal) == 0 ? 1 : (homeVal + awayVal);
     final homeRatio = homeVal / total;
+    final homeLeads = homeVal > awayVal;
+    final awayLeads = awayVal > homeVal;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      decoration: BoxDecoration(
+        color: p.cardElevated,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: p.borderSubtle),
+      ),
       child: Column(
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('$homeVal', style: const TextStyle(fontWeight: FontWeight.bold)),
-              Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-              Text('$awayVal', style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text(
+                '$homeVal',
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 13.5,
+                  color: homeLeads ? p.primaryAccent : Colors.white,
+                ),
+              ),
+              Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600)),
+              Text(
+                '$awayVal',
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 13.5,
+                  color: awayLeads ? p.secondaryAccent : Colors.white,
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           ClipRRect(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(999),
             child: SizedBox(
-              height: 10,
+              height: 8,
               child: Row(
                 children: [
                   Expanded(
                     flex: (homeRatio * 1000).round().clamp(1, 999),
-                    child: Container(color: const Color(0xFF00E676)),
+                    child: Container(color: p.primaryAccent),
                   ),
+                  const SizedBox(width: 2),
                   Expanded(
                     flex: ((1 - homeRatio) * 1000).round().clamp(1, 999),
-                    child: Container(color: const Color(0xFF00B0FF)),
+                    child: Container(color: p.secondaryAccent),
                   ),
                 ],
               ),
