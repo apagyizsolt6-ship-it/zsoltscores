@@ -523,13 +523,17 @@ class _MatchesTabState extends State<MatchesTab> {
 
           if (liveMatches.isNotEmpty)
             SizedBox(
-              height: 62,
+              height: 64,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 2),
                 itemCount: liveMatches.length,
                 itemBuilder: (ctx, idx) {
                   final lm = liveMatches[idx];
+                  final lastKeyEv = lm.events.where((e) => e.type == 'goal' || e.type == 'red').toList();
+                  final badgeSuffix = lastKeyEv.isNotEmpty
+                      ? ' • ${lastKeyEv.last.type == 'red' ? '🟥' : '⚽'} ${lastKeyEv.last.player} ${lastKeyEv.last.minute}'
+                      : '';
                   return Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: InkWell(
@@ -566,6 +570,11 @@ class _MatchesTabState extends State<MatchesTab> {
                               '${lm.homeTeam}  ${lm.homeScore} - ${lm.awayScore}  ${lm.awayTeam}',
                               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
                             ),
+                            if (badgeSuffix.isNotEmpty)
+                              Text(
+                                badgeSuffix,
+                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: p.primaryAccent),
+                              ),
                           ],
                         ),
                       ),
