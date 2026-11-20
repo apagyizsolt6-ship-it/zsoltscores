@@ -427,22 +427,56 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                                   final icon = ev.type == 'goal'
                                       ? '⚽'
                                       : (ev.type == 'red' ? '🟥' : (ev.type == 'sub' ? '🔄' : '🟨'));
+                                  final sideColor = ev.isHome ? p.primaryAccent : p.secondaryAccent;
+                                  final isGoal = ev.type == 'goal';
                                   return Container(
                                     margin: const EdgeInsets.only(bottom: 10),
                                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                                     decoration: BoxDecoration(
-                                      color: p.cardElevated,
+                                      color: isGoal ? sideColor.withAlpha(18) : p.cardElevated,
                                       borderRadius: BorderRadius.circular(14),
-                                      border: Border.all(color: p.borderSubtle),
+                                      border: Border(
+                                        left: BorderSide(color: sideColor, width: 3.5),
+                                        top: BorderSide(color: isGoal ? sideColor.withAlpha(90) : p.borderSubtle),
+                                        right: BorderSide(color: isGoal ? sideColor.withAlpha(90) : p.borderSubtle),
+                                        bottom: BorderSide(color: isGoal ? sideColor.withAlpha(90) : p.borderSubtle),
+                                      ),
                                     ),
                                     child: Row(
                                       children: [
-                                        Text(ev.minute, style: TextStyle(fontWeight: FontWeight.bold, color: p.primaryAccent)),
-                                        const SizedBox(width: 10),
+                                        SizedBox(
+                                          width: 42,
+                                          child: Text(
+                                            ev.minute,
+                                            style: TextStyle(fontWeight: FontWeight.w900, color: sideColor, fontSize: 12),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
                                         Text(icon, style: const TextStyle(fontSize: 16)),
                                         const SizedBox(width: 10),
-                                        Expanded(child: Text(ev.player, style: const TextStyle(fontWeight: FontWeight.w600))),
-                                        Text(ev.isHome ? _match.homeTeam : _match.awayTeam, style: const TextStyle(fontSize: 11, color: Colors.white60)),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(ev.player, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                                              Text(
+                                                ev.isHome ? _match.homeTeam : _match.awayTeam,
+                                                style: const TextStyle(fontSize: 10.5, color: Colors.white54),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                          decoration: BoxDecoration(
+                                            color: sideColor.withAlpha(24),
+                                            borderRadius: BorderRadius.circular(7),
+                                          ),
+                                          child: Text(
+                                            ev.isHome ? 'HAZAI' : 'VENDÉG',
+                                            style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: sideColor),
+                                          ),
+                                        ),
                                       ],
                                     ),
                                   );
