@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:zsoltscores/api_service.dart';
 import 'package:zsoltscores/theme/app_theme.dart';
 
 int compareHungarianStrings(String a, String b) {
@@ -128,7 +127,7 @@ class CountryFlagBadge extends StatelessWidget {
   }
 }
 
-class CachedTeamLogo extends StatefulWidget {
+class CachedTeamLogo extends StatelessWidget {
   final String teamName;
   final Color fallbackColor;
   final String? logoUrl;
@@ -144,57 +143,6 @@ class CachedTeamLogo extends StatefulWidget {
     this.showInitialsOnFallback = true,
   });
 
-  @override
-  State<CachedTeamLogo> createState() => _CachedTeamLogoState();
-}
-
-class _CachedTeamLogoState extends State<CachedTeamLogo> {
-  String? _resolvedUrl;
-  bool _lookedUp = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _initLogo();
-  }
-
-  @override
-  void didUpdateWidget(covariant CachedTeamLogo oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.teamName != widget.teamName || oldWidget.logoUrl != widget.logoUrl) {
-      _lookedUp = false;
-      _initLogo();
-    }
-  }
-
-  Future<void> _initLogo() async {
-    final direct = (widget.logoUrl ?? '').trim();
-    if (direct.startsWith('http')) {
-      _resolvedUrl = direct;
-      await LogoCache.saveUrl(widget.teamName, direct);
-      if (mounted) setState(() => _lookedUp = true);
-      return;
-    }
-
-    final cached = LogoCache.getCachedUrl(widget.teamName);
-    if (cached != null && cached.isNotEmpty) {
-      _resolvedUrl = cached;
-      if (mounted) setState(() => _lookedUp = true);
-      return;
-    }
-
-    if (ApiConfig.hasValidKey && widget.teamName.trim().length >= 2) {
-      final fetched = await SportsApiService.lookupTeamLogoUrl(widget.teamName);
-      if (fetched != null && fetched.isNotEmpty) {
-        _resolvedUrl = fetched;
-      }
-    }
-
-    if (mounted) {
-      setState(() => _lookedUp = true);
-    }
-  }
-
   String _initials(String name) {
     final clean = name.trim();
     if (clean.isEmpty) return '?';
@@ -208,8 +156,8 @@ class _CachedTeamLogoState extends State<CachedTeamLogo> {
   @override
   Widget build(BuildContext context) {
     final p = AppThemeController.instance.palette;
-    final size = widget.radius * 2;
-    final url = _resolvedUrl;
+    final size = radius * 2;
+    final url = (logoUrl ?? '').trim();
 
     Widget fallbackWidget() {
       return Container(
@@ -218,39 +166,35 @@ class _CachedTeamLogoState extends State<CachedTeamLogo> {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [widget.fallbackColor, widget.fallbackColor.withAlpha(175)],
+            colors: [fallbackColor, fallbackColor.withAlpha(175)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           shape: BoxShape.circle,
           border: Border.all(color: Colors.white24, width: 1),
         ),
-        child: widget.showInitialsOnFallback
+        child: showInitialsOnFallback
             ? Text(
-                _initials(widget.teamName),
+                _initials(teamName),
                 style: TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.w900,
-                  fontSize: (widget.radius * 0.72).clamp(8.5, 16.0),
+                  fontSize: (radius * 0.72).clamp(8.5, 16.0),
                 ),
               )
-            : Icon(Icons.shield, color: Colors.white, size: widget.radius * 1.15),
+            : Icon(Icons.shield, color: Colors.white, size: radius * 1.15),
       );
     }
 
-    if (!_lookedUp && (widget.logoUrl == null || widget.logoUrl!.isEmpty)) {
-      return fallbackWidget();
-    }
-
-    if (url != null && url.startsWith('http')) {
+    if (url.startsWith('http')) {
       return Container(
         width: size,
         height: size,
-        padding: EdgeInsets.all((widget.radius * 0.12).clamp(1.5, 3.0)),
+        padding: EdgeInsets.all((radius * 0.12).clamp(1.5, 3.0)),
         decoration: BoxDecoration(
           color: p.scaffoldBg.withAlpha(220),
           shape: BoxShape.circle,
-          border: Border.all(color: widget.fallbackColor.withAlpha(110), width: 1),
+          border: Border.all(color: fallbackColor.withAlpha(110), width: 1),
         ),
         clipBehavior: Clip.antiAlias,
         child: Image.network(
