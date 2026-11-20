@@ -18,6 +18,7 @@ class DisplayPrefs {
   static const _alertGoalKey = 'zsolt_alert_goal';
   static const _alertRedKey = 'zsolt_alert_red';
   static const _alertEndKey = 'zsolt_alert_end';
+  static const _recentSearchesKey = 'zsolt_recent_searches';
 
   static Set<String> pinnedCompetitions = {'Magyarország • NB I', 'Európa • Bajnokok Ligája'};
   static CollapseMode collapseMode = CollapseMode.liveOrPinned;
@@ -26,6 +27,7 @@ class DisplayPrefs {
   static bool alertOnGoal = true;
   static bool alertOnRedCard = true;
   static bool alertOnFinish = true;
+  static List<String> recentSearches = [];
 
   static Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -49,6 +51,22 @@ class DisplayPrefs {
     alertOnGoal = prefs.getBool(_alertGoalKey) ?? true;
     alertOnRedCard = prefs.getBool(_alertRedKey) ?? true;
     alertOnFinish = prefs.getBool(_alertEndKey) ?? true;
+    final savedSearches = prefs.getStringList(_recentSearchesKey);
+    if (savedSearches != null) {
+      recentSearches = savedSearches.where((e) => e.trim().isNotEmpty).take(6).toList();
+    }
+  }
+
+  static Future<void> addRecentSearch(String query) async {
+    final q = query.trim();
+    if (q.length < 2) return;
+    recentSearches.removeWhere((item) => item.toLowerCase() == q.toLowerCase());
+    recentSearches.insert(0, q);
+    if (recentSearches.length > 6) {
+      recentSearches = recentSearches.take(6).toList();
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_recentSearchesKey, recentSearches);
   }
 
   static bool isFavoriteTeam(String teamName) {
@@ -700,7 +718,7 @@ class FetchResult<T> {
 class MatchEvent {
   final String minute;
   final String player;
-  final String type; // 'goal', 'yellow', 'red'
+  final String type; // 'goal', 'yellow', 'red', 'sub'
   final bool isHome;
 
   const MatchEvent({
@@ -709,6 +727,15 @@ class MatchEvent {
     required this.type,
     required this.isHome,
   });
+
+  int get minuteSortValue {
+    final clean = minute.replaceAll("'", '').trim();
+    if (clean.contains('+')) {
+      final parts = clean.split('+');
+      return (int.tryParse(parts[0]) ?? 0) * 10 + (int.tryParse(parts[1]) ?? 0);
+    }
+    return (int.tryParse(clean) ?? 0) * 10;
+  }
 
   Map toJson() => {'minute': minute, 'player': player, 'type': type, 'isHome': isHome};
 
@@ -911,6 +938,15 @@ class MatchData {
   });
 
   String get fullCompetitionLabel => '$country • $league';
+
+  static int formPoints(List<String> form) {
+    int pts = 0;
+    for (final f in form) {
+      if (f == 'GY') pts += 3;
+      if (f == 'D') pts += 1;
+    }
+    return pts;
+  }
 
   String buildShareText() {
     final stateTag = isLive ? 'ÉLŐ • $status' : status;
@@ -1178,9 +1214,6 @@ class SportsApiService {
     return sorted;
   }
 
-  // =========================================================================
-  // 0. STATPAL HASZNÁLATFIGYELŐ
-  // =========================================================================
   static Future<String> fetchStatPalDailyUsage(String rawKey) async {
     final k = rawKey.trim();
     if (k.isEmpty) return 'Nincs megadva StatPal kulcs.';
@@ -1204,9 +1237,6 @@ class SportsApiService {
     return 'Mai kérések: ${res.body}';
   }
 
-  // =========================================================================
-  // 1. NAPI MECCSEK LEKÉRÉSE
-  // =========================================================================
   static Future<FetchResult<List<MatchData>>> fetchMatches(
     DateTime date, {
     bool forceRefresh = false,
@@ -1240,7 +1270,6 @@ class SportsApiService {
     return FetchResult(data: sorted, fromCache: false);
   }
 
-  // --- HIGHLIGHTLY MECCSEK ---
   static Future<List<MatchData>> _fetchHighlightlyMatches(String dateStr) async {
     const int pageSize = 100;
     int offset = 0;
@@ -1300,7 +1329,6 @@ class SportsApiService {
     return allMatches;
   }
 
-  // --- STATPAL SOCCER V2 MECCSEK ---
   static Future<List<MatchData>> _fetchStatPalV2Matches(DateTime targetDate) async {
     final key = Uri.encodeComponent(ApiConfig.statpalKey.trim());
     final dateStr = formatDate(targetDate);
@@ -1636,6 +1664,8 @@ class SportsApiService {
         type = 'yellow';
       } else if (typeRaw.contains('red')) {
         type = 'red';
+      } else if (typeRaw.contains('sub')) {
+        type = 'sub';
       } else if (!typeRaw.contains('goal') && !typeRaw.contains('pen')) {
         continue;
       }
@@ -1709,7 +1739,6 @@ class SportsApiService {
     return result;
   }
 
-  // --- HIGHLIGHTLY EGYEDI MECCS PARSER ---
   static MatchData _parseHighlightlyMatch(Map m) {
     final homeMap = m['homeTeam'] is Map ? m['homeTeam'] as Map : {};
     final awayMap = m['awayTeam'] is Map ? m['awayTeam'] as Map : {};
@@ -1934,6 +1963,8 @@ class SportsApiService {
           type = 'yellow';
         } else if (rawType.contains('red')) {
           type = 'red';
+        } else if (rawType.contains('sub')) {
+          type = 'sub';
         } else if (!rawType.contains('goal') && !rawType.contains('pen')) {
           continue;
         }
@@ -1958,9 +1989,6 @@ class SportsApiService {
     return parsed;
   }
 
-  // =========================================================================
-  // 2. MECCS RÉSZLETEK FRISSÍTÉSE (STAT + ESEMÉNY + FELÁLLÁS + H2H + VIDEÓ)
-  // =========================================================================
   static Future<FetchResult<MatchData>> enrichMatchDetails(
     MatchData base, {
     bool forceRefresh = false,
@@ -2092,7 +2120,7 @@ class SportsApiService {
     final enriched = _ensureFallbackFormAndLineup(current).copyWith(
       detailNote: rateLimited
           ? 'StatPal kéréskorlát (429) – várj 15 másodpercet a következő frissítésig.'
-          : 'StatPal V2 élő adatforrás • Forma, 2D felállás és helyileg tárolt logók.',
+          : 'StatPal V2 élő adatforrás • Idővonal, 2D felállás és bővített statisztika.',
     );
     if (!rateLimited) {
       await ApiCache.put(cacheKey, jsonEncode(enriched.toCacheMap()));
@@ -2249,9 +2277,6 @@ class SportsApiService {
     return FetchResult(fromCache: false, data: finalMatch);
   }
 
-  // =========================================================================
-  // 3. TABELLÁK LEKÉRÉSE (5 TOPLIGA + NB I + EURÓPA LIGA + KONFERENCIA LIGA)
-  // =========================================================================
   static const highlightlyLeagueIds = {
     'Premier League': 33973,
     'Bajnokok Ligája': 2486,
@@ -2559,6 +2584,7 @@ const List<MatchData> sampleMatches = [
       MatchEvent(minute: "28'", player: 'Valverde', type: 'yellow', isHome: true),
       MatchEvent(minute: "39'", player: 'Vinícius Jr.', type: 'goal', isHome: true),
       MatchEvent(minute: "52'", player: 'Salah', type: 'goal', isHome: false),
+      MatchEvent(minute: "61'", player: 'Bellingham (be: Modrić)', type: 'sub', isHome: true),
       MatchEvent(minute: "69'", player: 'Bellingham', type: 'goal', isHome: true),
     ],
     highlights: [
