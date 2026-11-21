@@ -404,7 +404,7 @@ class _StandingsTabState extends State<StandingsTab> {
   @override
   Widget build(BuildContext context) {
     final p = AppThemeController.instance.palette;
-    final leagues = SportsApiService.highlightlyLeagueIds.keys.toList();
+    final leagues = SportsApiService.statpalLeagueIds.keys.toList();
     final scorers = sampleTopScorers[selectedLeague] ??
         const [
           TopScorerRow(rank: 1, player: 'Liga gólkirály', team: 'Éllovas', goals: 9, assists: 3),
