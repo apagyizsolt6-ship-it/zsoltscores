@@ -404,7 +404,20 @@ class _StandingsTabState extends State<StandingsTab> {
   @override
   Widget build(BuildContext context) {
     final p = AppThemeController.instance.palette;
+    // Belső kulcs angol (API), megjelenítés magyar
     final leagues = SportsApiService.statpalLeagueIds.keys.toList();
+    String leagueLabel(String key) {
+      const labels = {
+        'Premier League': 'Premier League',
+        'La Liga': 'La Liga',
+        'Serie A': 'Serie A',
+        'Bundesliga': 'Bundesliga',
+        'Ligue 1': 'Ligue 1',
+        'NB I': 'NB I',
+        'Bajnokok Ligája': 'Bajnokok Ligája',
+      };
+      return labels[key] ?? SportsApiService.localizeLeague(key);
+    }
     final scorers = sampleTopScorers[selectedLeague] ??
         const [
           TopScorerRow(rank: 1, player: 'Liga gólkirály', team: 'Éllovas', goals: 9, assists: 3),
@@ -485,7 +498,7 @@ class _StandingsTabState extends State<StandingsTab> {
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: ChoiceChip(
-                    label: Text(l, style: const TextStyle(fontSize: 12)),
+                    label: Text(leagueLabel(l), style: const TextStyle(fontSize: 12)),
                     selected: isSelected,
                     selectedColor: p.primaryAccent,
                     backgroundColor: p.cardElevated,
