@@ -13,7 +13,6 @@ Future<void> main() async {
   await ApiConfig.load();
   await ApiCache.loadStats();
   await DisplayPrefs.load();
-  await LogoCache.init();
   await AppThemeController.instance.load();
   runApp(const ZsoltScoresApp());
 }
@@ -214,9 +213,6 @@ class _MainShellState extends State<MainShell> {
   }
 
   void _openApiSettingsDialog() async {
-    await LogoCache.refreshCount();
-    if (!mounted) return;
-
     ApiProvider tempProvider = ApiConfig.provider;
     final hlController = TextEditingController(text: ApiConfig.highlightlyKey);
     final spController = TextEditingController(text: ApiConfig.statpalKey);
@@ -238,6 +234,7 @@ class _MainShellState extends State<MainShell> {
           final p = AppThemeController.instance.palette;
           final isSp = tempProvider == ApiProvider.statpal;
           final activeCtrl = isSp ? spController : hlController;
+          final currentStyle = AppThemeController.instance.style;
 
           return AlertDialog(
             backgroundColor: p.cardElevated,
@@ -245,7 +242,7 @@ class _MainShellState extends State<MainShell> {
               children: [
                 Icon(Icons.vpn_key, color: p.primaryAccent),
                 const SizedBox(width: 8),
-                const Text('Beállítások és Gyorsítótár', style: TextStyle(fontSize: 17)),
+                Text('Beállítások és Gyorsítótár', style: TextStyle(fontSize: 17, color: p.textPrimary)),
               ],
             ),
             content: SingleChildScrollView(
@@ -257,42 +254,54 @@ class _MainShellState extends State<MainShell> {
                     p: p,
                     title: 'Megjelenés / Színvilág',
                     children: [
-                      Row(
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
                         children: [
-                          Expanded(
-                            child: ChoiceChip(
-                              label: const Center(child: Text('Klasszikus sötét', style: TextStyle(fontSize: 11.5))),
-                              selected: !AppThemeController.instance.isOled,
-                              selectedColor: const Color(0xFF00E676),
-                              backgroundColor: p.scaffoldBg,
-                              labelStyle: TextStyle(
-                                color: !AppThemeController.instance.isOled ? Colors.black : Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              onSelected: (_) async {
-                                await AppThemeController.instance.setStyle(ZsoltThemeStyle.classicDark);
-                                setDialogState(() {});
-                                setState(() => _settingsVersion++);
-                              },
+                          ChoiceChip(
+                            label: const Text('Klasszikus sötét', style: TextStyle(fontSize: 11)),
+                            selected: currentStyle == ZsoltThemeStyle.classicDark,
+                            selectedColor: const Color(0xFF00E676),
+                            backgroundColor: p.scaffoldBg,
+                            labelStyle: TextStyle(
+                              color: currentStyle == ZsoltThemeStyle.classicDark ? Colors.black : p.textPrimary,
+                              fontWeight: FontWeight.bold,
                             ),
+                            onSelected: (_) async {
+                              await AppThemeController.instance.setStyle(ZsoltThemeStyle.classicDark);
+                              setDialogState(() {});
+                              setState(() => _settingsVersion++);
+                            },
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: ChoiceChip(
-                              label: const Center(child: Text('OLED Éjszakai', style: TextStyle(fontSize: 11.5))),
-                              selected: AppThemeController.instance.isOled,
-                              selectedColor: const Color(0xFF38BDF8),
-                              backgroundColor: Colors.black,
-                              labelStyle: TextStyle(
-                                color: AppThemeController.instance.isOled ? Colors.black : Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              onSelected: (_) async {
-                                await AppThemeController.instance.setStyle(ZsoltThemeStyle.oledMidnight);
-                                setDialogState(() {});
-                                setState(() => _settingsVersion++);
-                              },
+                          ChoiceChip(
+                            label: const Text('OLED Éjszakai', style: TextStyle(fontSize: 11)),
+                            selected: currentStyle == ZsoltThemeStyle.oledMidnight,
+                            selectedColor: const Color(0xFF38BDF8),
+                            backgroundColor: p.scaffoldBg,
+                            labelStyle: TextStyle(
+                              color: currentStyle == ZsoltThemeStyle.oledMidnight ? Colors.black : p.textPrimary,
+                              fontWeight: FontWeight.bold,
                             ),
+                            onSelected: (_) async {
+                              await AppThemeController.instance.setStyle(ZsoltThemeStyle.oledMidnight);
+                              setDialogState(() {});
+                              setState(() => _settingsVersion++);
+                            },
+                          ),
+                          ChoiceChip(
+                            label: const Text('☀️ Világos mód', style: TextStyle(fontSize: 11)),
+                            selected: currentStyle == ZsoltThemeStyle.lightDay,
+                            selectedColor: const Color(0xFF059669),
+                            backgroundColor: p.scaffoldBg,
+                            labelStyle: TextStyle(
+                              color: currentStyle == ZsoltThemeStyle.lightDay ? Colors.white : p.textPrimary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            onSelected: (_) async {
+                              await AppThemeController.instance.setStyle(ZsoltThemeStyle.lightDay);
+                              setDialogState(() {});
+                              setState(() => _settingsVersion++);
+                            },
                           ),
                         ],
                       ),
@@ -311,7 +320,7 @@ class _MainShellState extends State<MainShell> {
                               selectedColor: p.primaryAccent,
                               backgroundColor: p.scaffoldBg,
                               labelStyle: TextStyle(
-                                color: !isSp ? Colors.black : Colors.white,
+                                color: !isSp ? Colors.white : p.textPrimary,
                                 fontWeight: FontWeight.bold,
                               ),
                               onSelected: (_) => setDialogState(() => tempProvider = ApiProvider.highlightly),
@@ -325,7 +334,7 @@ class _MainShellState extends State<MainShell> {
                               selectedColor: p.secondaryAccent,
                               backgroundColor: p.scaffoldBg,
                               labelStyle: TextStyle(
-                                color: isSp ? Colors.black : Colors.white,
+                                color: isSp ? Colors.white : p.textPrimary,
                                 fontWeight: FontWeight.bold,
                               ),
                               onSelected: (_) => setDialogState(() => tempProvider = ApiProvider.statpal),
@@ -336,7 +345,7 @@ class _MainShellState extends State<MainShell> {
                       const SizedBox(height: 10),
                       Text(
                         isSp ? 'StatPal.io hozzáférési kulcs (UUID):' : 'Highlightly API kulcs:',
-                        style: const TextStyle(fontSize: 12, color: Colors.white70),
+                        style: TextStyle(fontSize: 12, color: p.textSecondary),
                       ),
                       const SizedBox(height: 6),
                       TextField(
@@ -364,7 +373,7 @@ class _MainShellState extends State<MainShell> {
                           title: const Text('RapidAPI végpont használata', style: TextStyle(fontSize: 13)),
                           subtitle: Text(
                             tempRapid ? 'football-highlights-api.p.rapidapi.com' : 'soccer.highlightly.net',
-                            style: const TextStyle(fontSize: 11, color: Colors.white54),
+                            style: TextStyle(fontSize: 11, color: p.textMuted),
                           ),
                           value: tempRapid,
                           onChanged: (val) => setDialogState(() => tempRapid = val),
@@ -381,9 +390,9 @@ class _MainShellState extends State<MainShell> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
+                              Text(
                                 'statpal.io/api/v2/soccer • 15 mp-es élő frissítés',
-                                style: TextStyle(fontSize: 11, color: Colors.white70),
+                                style: TextStyle(fontSize: 11, color: p.textSecondary),
                               ),
                               const SizedBox(height: 6),
                               SizedBox(
@@ -425,9 +434,9 @@ class _MainShellState extends State<MainShell> {
                       SwitchListTile(
                         contentPadding: EdgeInsets.zero,
                         title: const Text('Élő követés (60 mp-es listafrissítés)', style: TextStyle(fontSize: 13)),
-                        subtitle: const Text(
-                          'Gól esetén zöld jelzés + kiemelt meccs riasztás',
-                          style: TextStyle(fontSize: 11, color: Colors.white54),
+                        subtitle: Text(
+                          'Gól esetén kiemelés + kedvenc meccs riasztás',
+                          style: TextStyle(fontSize: 11, color: p.textMuted),
                         ),
                         value: tempAutoLiveList,
                         onChanged: (val) => setDialogState(() => tempAutoLiveList = val),
@@ -468,7 +477,7 @@ class _MainShellState extends State<MainShell> {
                     p: p,
                     title: 'Kedvenc csapatok és Bajnokságok',
                     children: [
-                      const Text('Kedvenc csapatok (vesszővel elválasztva):', style: TextStyle(fontSize: 12, color: Colors.white70)),
+                      Text('Kedvenc csapatok (vesszővel elválasztva):', style: TextStyle(fontSize: 12, color: p.textSecondary)),
                       const SizedBox(height: 6),
                       TextField(
                         controller: favTeamsController,
@@ -480,7 +489,7 @@ class _MainShellState extends State<MainShell> {
                         ),
                       ),
                       const SizedBox(height: 10),
-                      const Text('Bajnokságok kezdőállapota:', style: TextStyle(fontSize: 12, color: Colors.white70)),
+                      Text('Bajnokságok kezdőállapota:', style: TextStyle(fontSize: 12, color: p.textSecondary)),
                       const SizedBox(height: 6),
                       Wrap(
                         spacing: 6,
@@ -492,7 +501,7 @@ class _MainShellState extends State<MainShell> {
                             selectedColor: p.primaryAccent,
                             backgroundColor: p.scaffoldBg,
                             labelStyle: TextStyle(
-                              color: tempCollapseMode == CollapseMode.liveOrPinned ? Colors.black : Colors.white,
+                              color: tempCollapseMode == CollapseMode.liveOrPinned ? Colors.white : p.textPrimary,
                               fontWeight: FontWeight.bold,
                             ),
                             onSelected: (_) => setDialogState(() => tempCollapseMode = CollapseMode.liveOrPinned),
@@ -503,7 +512,7 @@ class _MainShellState extends State<MainShell> {
                             selectedColor: p.secondaryAccent,
                             backgroundColor: p.scaffoldBg,
                             labelStyle: TextStyle(
-                              color: tempCollapseMode == CollapseMode.allExpanded ? Colors.black : Colors.white,
+                              color: tempCollapseMode == CollapseMode.allExpanded ? Colors.white : p.textPrimary,
                               fontWeight: FontWeight.bold,
                             ),
                             onSelected: (_) => setDialogState(() => tempCollapseMode = CollapseMode.allExpanded),
@@ -511,10 +520,10 @@ class _MainShellState extends State<MainShell> {
                           ChoiceChip(
                             label: const Text('Mind csukva', style: TextStyle(fontSize: 11)),
                             selected: tempCollapseMode == CollapseMode.allCollapsed,
-                            selectedColor: Colors.amberAccent,
+                            selectedColor: p.goldAccent,
                             backgroundColor: p.scaffoldBg,
                             labelStyle: TextStyle(
-                              color: tempCollapseMode == CollapseMode.allCollapsed ? Colors.black : Colors.white,
+                              color: tempCollapseMode == CollapseMode.allCollapsed ? Colors.white : p.textPrimary,
                               fontWeight: FontWeight.bold,
                             ),
                             onSelected: (_) => setDialogState(() => tempCollapseMode = CollapseMode.allCollapsed),
@@ -525,12 +534,12 @@ class _MainShellState extends State<MainShell> {
                   ),
                   _settingsSectionCard(
                     p: p,
-                    title: 'Helyi tároló (API- és logókímélő)',
+                    title: 'Helyi tároló (API-kímélő)',
                     children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('Meccslista megőrzése:', style: TextStyle(fontSize: 12, color: Colors.white70)),
+                          Text('Meccslista megőrzése:', style: TextStyle(fontSize: 12, color: p.textSecondary)),
                           Wrap(
                             spacing: 6,
                             children: [2, 5, 15].map((min) {
@@ -541,7 +550,7 @@ class _MainShellState extends State<MainShell> {
                                 selectedColor: p.secondaryAccent,
                                 backgroundColor: p.scaffoldBg,
                                 labelStyle: TextStyle(
-                                  color: selected ? Colors.black : Colors.white,
+                                  color: selected ? Colors.white : p.textPrimary,
                                   fontWeight: FontWeight.bold,
                                 ),
                                 onSelected: (_) => setDialogState(() => tempTtl = min),
@@ -562,20 +571,14 @@ class _MainShellState extends State<MainShell> {
                           children: [
                             Column(
                               children: [
-                                Text('${ApiCache.networkRequests}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.amberAccent, fontSize: 15)),
-                                const Text('API kérés', style: TextStyle(fontSize: 10, color: Colors.white60)),
+                                Text('${ApiCache.networkRequests}', style: TextStyle(fontWeight: FontWeight.bold, color: p.goldAccent, fontSize: 15)),
+                                Text('API kérés', style: TextStyle(fontSize: 10, color: p.textMuted)),
                               ],
                             ),
                             Column(
                               children: [
                                 Text('${ApiCache.savedRequests}', style: TextStyle(fontWeight: FontWeight.bold, color: p.primaryAccent, fontSize: 15)),
-                                const Text('Megspórolt', style: TextStyle(fontSize: 10, color: Colors.white60)),
-                              ],
-                            ),
-                            Column(
-                              children: [
-                                Text('${LogoCache.savedLogosCount}', style: TextStyle(fontWeight: FontWeight.bold, color: p.secondaryAccent, fontSize: 15)),
-                                const Text('Mentett logó', style: TextStyle(fontSize: 10, color: Colors.white60)),
+                                Text('Megspórolt', style: TextStyle(fontSize: 10, color: p.textMuted)),
                               ],
                             ),
                           ],
@@ -587,16 +590,15 @@ class _MainShellState extends State<MainShell> {
                         child: OutlinedButton.icon(
                           onPressed: () async {
                             final clearedJson = await ApiCache.clearAll();
-                            final clearedLogos = await LogoCache.clearAll();
                             setDialogState(() {});
                             if (ctx.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Gyorsítótár törölve ($clearedJson adat, $clearedLogos logó).')),
+                                SnackBar(content: Text('Gyorsítótár törölve ($clearedJson adat).')),
                               );
                             }
                           },
                           icon: Icon(Icons.delete_sweep, size: 18, color: p.secondaryAccent),
-                          label: const Text('Adat- és logótároló törlése', style: TextStyle(fontSize: 12)),
+                          label: const Text('Gyorsítótár törlése', style: TextStyle(fontSize: 12)),
                         ),
                       ),
                     ],
@@ -654,7 +656,7 @@ class _MainShellState extends State<MainShell> {
                   setState(() => _settingsVersion++);
                   _loadMatches(forceRefresh: false);
                 },
-                child: const Text('Mentés', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                child: const Text('Mentés', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               ),
             ],
           );
