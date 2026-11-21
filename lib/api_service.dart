@@ -902,19 +902,77 @@ class SportsApiService {
   /// StatPal Soccer API V2 base URL (csak v2)
   static const String _statpalBaseUrl = 'https://statpal.io/api/v2/soccer';
 
-  /// StatPal V2 liga azonosítók a /leagues/{id}/... végpontokhoz
+  /// StatPal V2 liga azonosítók (fallback; a /leagues végpont felülírhatja)
   static const Map<String, String> statpalLeagueIds = {
-    'Premier League': '152',
-    'La Liga': '207',
-    'Serie A': '201',
-    'Bundesliga': '171',
-    'Ligue 1': '168',
-    'NB I': '3037',
-    'Bajnokok Ligája': '2892',
+    'Premier League': '1007',
+    'La Liga': '1397',
+    'Serie A': '1283',
+    'Bundesliga': '1229',
+    'Ligue 1': '1221',
+    'NB I': '1563',
+    'Bajnokok Ligája': '1075',
+    'Championship': '3038',
   };
 
-  /// Régi név kompatibilitás
-  static Map<String, String> get statpalLeagueSlugs => statpalLeagueIds;
+  static final Map<String, String> _resolvedLeagueIds = {};
+
+  static Map<String, String> get statpalLeagueSlugs => {
+        ...statpalLeagueIds,
+        ..._resolvedLeagueIds,
+      };
+
+  static String teamLogoUrl(String teamId) {
+    final key = ApiConfig.activeKey;
+    if (teamId.isEmpty || key.isEmpty) return '';
+    return '$_statpalBaseUrl/images?type=team&id=$teamId&access_key=$key';
+  }
+
+  static String? countryFlagCdnUrl(String countryHu) {
+    const codes = {
+      'Anglia': 'gb-eng',
+      'Spanyolország': 'es',
+      'Olaszország': 'it',
+      'Németország': 'de',
+      'Franciaország': 'fr',
+      'Magyarország': 'hu',
+      'Portugália': 'pt',
+      'Hollandia': 'nl',
+      'Belgium': 'be',
+      'Skócia': 'gb-sct',
+      'Törökország': 'tr',
+      'Görögország': 'gr',
+      'Ausztria': 'at',
+      'Svájc': 'ch',
+      'Lengyelország': 'pl',
+      'Csehország': 'cz',
+      'Szlovákia': 'sk',
+      'Románia': 'ro',
+      'Szerbia': 'rs',
+      'Horvátország': 'hr',
+      'Szlovénia': 'si',
+      'Bulgária': 'bg',
+      'Ukrajna': 'ua',
+      'Dánia': 'dk',
+      'Svédország': 'se',
+      'Norvégia': 'no',
+      'Finnország': 'fi',
+      'Írország': 'ie',
+      'Wales': 'gb-wls',
+      'Brazília': 'br',
+      'Argentína': 'ar',
+      'Mexikó': 'mx',
+      'USA': 'us',
+      'Japán': 'jp',
+      'Dél-Korea': 'kr',
+      'Ausztrália': 'au',
+      'Egyiptom': 'eg',
+      'Marokkó': 'ma',
+      'Európa': 'eu',
+    };
+    final code = codes[countryHu];
+    if (code == null) return null;
+    return 'https://flagcdn.com/w40/$code.png';
+  }
 
   /// Országnevek angol → magyar
   static const Map<String, String> _countryHu = {
@@ -1138,6 +1196,60 @@ class SportsApiService {
     return '$y-$m-$d';
   }
 
+  /// Aktuális szezon címke (pl. 2025-2026)
+  static String _currentSeasonLabel() {
+    final now = DateTime.now();
+    final startYear = now.month >= 7 ? now.year : now.year - 1;
+    return '$startYear-${startYear + 1}';
+  }
+
+  /// Liga ID-k feloldása a V2 /leagues listából (név egyezés)
+  static Future<void> _ensureLeagueIdsResolved() async {
+    if (_resolvedLeagueIds.isNotEmpty || !ApiConfig.hasValidKey) return;
+    try {
+      await ApiCache.recordNetworkRequest();
+      final uri = Uri.parse('$_statpalBaseUrl/leagues?access_key=${ApiConfig.activeKey}');
+      final res = await http.get(uri).timeout(const Duration(seconds: 20));
+      if (res.statusCode != 200) return;
+      final decoded = jsonDecode(res.body);
+      final root = decoded is Map ? (decoded['leagues'] ?? decoded) : decoded;
+      final list = root is Map && root['league'] != null
+          ? (root['league'] is List ? root['league'] as List : [root['league']])
+          : (root is List ? root : const []);
+      for (final item in list) {
+        if (item is! Map) continue;
+        final id = (item['id'] ?? '').toString();
+        final name = (item['name'] ?? '').toString();
+        if (id.isEmpty || name.isEmpty) continue;
+        final lower = name.toLowerCase();
+        for (final wanted in statpalLeagueIds.keys) {
+          final w = wanted.toLowerCase();
+          if (lower == w || lower.contains(w) || w.contains(lower)) {
+            _resolvedLeagueIds[wanted] = id;
+          }
+        }
+        // gyakori aliasok
+        if (lower.contains('premier league') && lower.contains('england')) {
+          _resolvedLeagueIds['Premier League'] = id;
+        } else if (lower.contains('la liga') || lower.contains('primera division')) {
+          _resolvedLeagueIds['La Liga'] = id;
+        } else if (lower.contains('serie a') && lower.contains('italy')) {
+          _resolvedLeagueIds['Serie A'] = id;
+        } else if (lower == 'bundesliga' || lower.contains('bundesliga 1')) {
+          _resolvedLeagueIds['Bundesliga'] = id;
+        } else if (lower.contains('ligue 1')) {
+          _resolvedLeagueIds['Ligue 1'] = id;
+        } else if (lower.contains('nb i') || lower.contains('otp bank liga') || lower.contains('hungary')) {
+          if (lower.contains('nb') || lower.contains('otp') || lower.contains('magyar')) {
+            _resolvedLeagueIds['NB I'] = id;
+          }
+        } else if (lower.contains('champions league')) {
+          _resolvedLeagueIds['Bajnokok Ligája'] = id;
+        }
+      }
+    } catch (_) {}
+  }
+
   static String formatClock(DateTime dt) {
     final h = dt.hour.toString().padLeft(2, '0');
     final m = dt.minute.toString().padLeft(2, '0');
@@ -1213,34 +1325,32 @@ class SportsApiService {
     final key = ApiConfig.activeKey;
     final collected = <String, MatchData>{};
 
-    // 1) Mai nap: V2 live scores
-    if (isToday) {
-      await ApiCache.recordNetworkRequest();
-      final liveUri = Uri.parse('$_statpalBaseUrl/matches/live?access_key=$key');
-      final liveRes = await http.get(liveUri).timeout(const Duration(seconds: 15));
-      if (liveRes.statusCode == 200) {
-        final decoded = jsonDecode(liveRes.body);
-        for (final m in _extractMatchesFromStatPal(decoded)) {
-          collected[m.id] = m;
-        }
-      } else if (liveRes.statusCode == 401 || liveRes.statusCode == 403) {
-        throw Exception('Érvénytelen StatPal access_key (HTTP ${liveRes.statusCode})');
+    // Napi offset a mai naphoz képest (−7 … +7) — hivatalos V2 matches/daily
+    final today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+    final target = DateTime(date.year, date.month, date.day);
+    final offset = target.difference(today).inDays.clamp(-7, 7);
+
+    await ApiCache.recordNetworkRequest();
+    final dailyUri = Uri.parse('$_statpalBaseUrl/matches/daily?offset=$offset&access_key=$key');
+    final dailyRes = await http.get(dailyUri).timeout(const Duration(seconds: 20));
+    if (dailyRes.statusCode == 200) {
+      final decoded = jsonDecode(dailyRes.body);
+      for (final m in _extractMatchesFromStatPal(decoded, filterDate: dateStr)) {
+        collected[m.id] = m;
       }
+    } else if (dailyRes.statusCode == 401 || dailyRes.statusCode == 403) {
+      throw Exception('Érvénytelen StatPal access_key (HTTP ${dailyRes.statusCode})');
     }
 
-    // 2) Ligánkénti meccsek (V2) + dátumszűrés — mai napra is, ha a live üres / kiegészítés
-    for (final entry in statpalLeagueIds.entries) {
+    // Mai nap: élő lista kiegészítés
+    if (isToday) {
       try {
         await ApiCache.recordNetworkRequest();
-        final uri = Uri.parse('$_statpalBaseUrl/leagues/${entry.value}/matches?access_key=$key');
-        final res = await http.get(uri).timeout(const Duration(seconds: 12));
-        if (res.statusCode == 200) {
-          final decoded = jsonDecode(res.body);
-          for (final m in _extractMatchesFromStatPal(
-            decoded,
-            filterDate: dateStr,
-            fallbackLeague: entry.key,
-          )) {
+        final liveUri = Uri.parse('$_statpalBaseUrl/matches/live?access_key=$key');
+        final liveRes = await http.get(liveUri).timeout(const Duration(seconds: 15));
+        if (liveRes.statusCode == 200) {
+          final decoded = jsonDecode(liveRes.body);
+          for (final m in _extractMatchesFromStatPal(decoded)) {
             collected[m.id] = m;
           }
         }
@@ -1314,12 +1424,27 @@ class SportsApiService {
       return FetchResult(data: sample, fromCache: false, fetchedAt: now);
     }
 
+    await _ensureLeagueIdsResolved();
+    final resolvedId = _resolvedLeagueIds[leagueName] ??
+        statpalLeagueIds[leagueName] ??
+        leagueId;
+
     await ApiCache.recordNetworkRequest();
-    // V2: /leagues/{id}/standings
+    // V2: /leagues/{id}/standings (+ aktuális szezon)
+    final season = _currentSeasonLabel();
     final uri = Uri.parse(
-      '$_statpalBaseUrl/leagues/$leagueId/standings?access_key=${ApiConfig.activeKey}',
+      '$_statpalBaseUrl/leagues/$resolvedId/standings?season=$season&access_key=${ApiConfig.activeKey}',
     );
-    final res = await http.get(uri).timeout(const Duration(seconds: 15));
+    var res = await http.get(uri).timeout(const Duration(seconds: 15));
+
+    // Szezon paraméter nélkül újra, ha 4xx/5xx
+    if (res.statusCode != 200) {
+      await ApiCache.recordNetworkRequest();
+      final uri2 = Uri.parse(
+        '$_statpalBaseUrl/leagues/$resolvedId/standings?access_key=${ApiConfig.activeKey}',
+      );
+      res = await http.get(uri2).timeout(const Duration(seconds: 15));
+    }
 
     if (res.statusCode != 200) {
       throw Exception('HTTP ${res.statusCode}');
@@ -1340,14 +1465,15 @@ class SportsApiService {
               ? Map<String, dynamic>.from(m['away'] as Map)
               : overall);
 
-      final played = int.tryParse((scope['gp'] ?? scope['played'] ?? scope['matches_played'] ?? '0').toString()) ?? 0;
-      final won = int.tryParse((scope['w'] ?? scope['won'] ?? scope['wins'] ?? '0').toString()) ?? 0;
-      final drawn = int.tryParse((scope['d'] ?? scope['drawn'] ?? scope['draws'] ?? '0').toString()) ?? 0;
-      final lost = int.tryParse((scope['l'] ?? scope['lost'] ?? scope['losses'] ?? '0').toString()) ?? 0;
-      final gf = int.tryParse((scope['gs'] ?? scope['goals_for'] ?? scope['gf'] ?? '0').toString()) ?? 0;
-      final ga = int.tryParse((scope['ga'] ?? scope['goals_against'] ?? '0').toString()) ?? 0;
-      final gd = int.tryParse((m['gd'] ?? m['goal_difference'] ?? '${gf - ga}').toString()) ?? (gf - ga);
-      final points = int.tryParse((m['total']?['p'] ?? scope['p'] ?? m['points'] ?? m['pts'] ?? '0').toString()) ?? 0;
+      final played = int.tryParse((scope['games_played'] ?? scope['gp'] ?? scope['played'] ?? scope['matches_played'] ?? '0').toString()) ?? 0;
+      final won = int.tryParse((scope['wins'] ?? scope['w'] ?? scope['won'] ?? '0').toString()) ?? 0;
+      final drawn = int.tryParse((scope['draws'] ?? scope['d'] ?? scope['drawn'] ?? '0').toString()) ?? 0;
+      final lost = int.tryParse((scope['losses'] ?? scope['l'] ?? scope['lost'] ?? '0').toString()) ?? 0;
+      final gf = int.tryParse((scope['goals_scored'] ?? scope['gs'] ?? scope['goals_for'] ?? scope['gf'] ?? '0').toString()) ?? 0;
+      final ga = int.tryParse((scope['goals_allowed'] ?? scope['ga'] ?? scope['goals_against'] ?? '0').toString()) ?? 0;
+      final totalMap = m['total'] is Map ? Map<String, dynamic>.from(m['total'] as Map) : <String, dynamic>{};
+      final gd = int.tryParse((totalMap['goal_difference'] ?? m['gd'] ?? m['goal_difference'] ?? '${gf - ga}').toString()) ?? (gf - ga);
+      final points = int.tryParse((totalMap['points'] ?? totalMap['p'] ?? scope['p'] ?? m['points'] ?? m['pts'] ?? '0').toString()) ?? 0;
 
       String zone = 'none';
       if (pos <= 4) {
@@ -1361,7 +1487,12 @@ class SportsApiService {
       rows.add(StandingRow(
         pos: pos,
         team: teamName,
-        logo: m['logo']?.toString(),
+        logo: () {
+          final existing = m['logo']?.toString();
+          if (existing != null && existing.startsWith('http')) return existing;
+          final tid = (m['id'] ?? m['team_id'] ?? '').toString();
+          return tid.isNotEmpty ? teamLogoUrl(tid) : existing;
+        }(),
         played: played,
         won: won,
         drawn: drawn,
@@ -1387,12 +1518,22 @@ class SportsApiService {
     final out = <MatchData>[];
     if (decoded is! Map<String, dynamic>) return out;
 
-    final root = decoded['live_matches'] ??
+    dynamic root = decoded['live_matches'] ??
         decoded['livescores'] ??
         decoded['livescore'] ??
         decoded['fixtures'] ??
-        decoded['data'] ??
-        decoded;
+        decoded['data'];
+    // matches/daily válasz: matches_DD_MM_YYYY
+    if (root == null) {
+      for (final e in decoded.entries) {
+        final k = e.key.toString();
+        if (k.startsWith('matches_') || k.startsWith('match_')) {
+          root = e.value;
+          break;
+        }
+      }
+    }
+    root ??= decoded;
     if (root is Map<String, dynamic> && root['league'] != null) {
       final leaguesRaw = root['league'] is List ? root['league'] as List : [root['league']];
       for (final lg in leaguesRaw) {
@@ -1449,13 +1590,24 @@ class SportsApiService {
     final rows = <Map<String, dynamic>>[];
     if (decoded is! Map<String, dynamic>) return rows;
     final root = decoded['standings'] ?? decoded['data'] ?? decoded;
-    if (root is Map<String, dynamic> && root['league'] != null) {
-      final lg = root['league'] is List ? (root['league'] as List).first : root['league'];
-      if (lg is Map && lg['team'] != null) {
-        final teams = lg['team'] is List ? lg['team'] as List : [lg['team']];
-        for (final t in teams) {
-          if (t is Map) rows.add(Map<String, dynamic>.from(t));
-        }
+
+    void addTeams(dynamic teamsRaw) {
+      final teams = teamsRaw is List ? teamsRaw : (teamsRaw != null ? [teamsRaw] : const []);
+      for (final t in teams) {
+        if (t is Map) rows.add(Map<String, dynamic>.from(t));
+      }
+    }
+
+    if (root is Map<String, dynamic>) {
+      // Hivatalos V2: standings.tournament.team
+      final tournament = root['tournament'];
+      if (tournament is Map && tournament['team'] != null) {
+        addTeams(tournament['team']);
+      } else if (root['team'] != null) {
+        addTeams(root['team']);
+      } else if (root['league'] != null) {
+        final lg = root['league'] is List ? (root['league'] as List).first : root['league'];
+        if (lg is Map && lg['team'] != null) addTeams(lg['team']);
       }
     } else if (root is List) {
       for (final t in root) {
@@ -1537,12 +1689,21 @@ class SportsApiService {
       }
     }
 
+    final homeId = (homeObj['id'] ?? m['home_id'] ?? '').toString();
+    final awayId = (awayObj['id'] ?? m['away_id'] ?? '').toString();
+    final homeLogo = homeId.isNotEmpty ? teamLogoUrl(homeId) : null;
+    final awayLogo = awayId.isNotEmpty ? teamLogoUrl(awayId) : null;
+    final flagUrl = countryFlagCdnUrl(country);
+
     return MatchData(
       id: id,
       country: country,
+      countryFlagUrl: flagUrl,
       league: league,
       homeTeam: homeTeam,
       awayTeam: awayTeam,
+      homeLogo: homeLogo,
+      awayLogo: awayLogo,
       homeScore: homeScore,
       awayScore: awayScore,
       status: statusLabel,
