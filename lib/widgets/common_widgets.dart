@@ -210,6 +210,8 @@ class CachedTeamLogo extends StatelessWidget {
   }
 }
 
+enum _PitchLine { gk, def, mid, fwd }
+
 class FormationPitchView extends StatelessWidget {
   final String teamName;
   final Color accent;
@@ -235,67 +237,174 @@ class FormationPitchView extends StatelessWidget {
     return last;
   }
 
+  _PitchLine _classifyLine(LineupPlayer pl) {
+    final text = '${pl.position} ${pl.name}'.toLowerCase();
+    final numStr = pl.number.trim();
+
+    if (numStr == '1' ||
+        text.contains('kapus') ||
+        text.contains('gk') ||
+        text.contains('goalkeeper') ||
+        RegExp(r'\bg\b').hasMatch(text)) {
+      return _PitchLine.gk;
+    }
+
+    if (text.contains('csatár') ||
+        text.contains('szélső') ||
+        text.contains('támadó') ||
+        text.contains('striker') ||
+        text.contains('forward') ||
+        text.contains('winger') ||
+        text.contains('st') ||
+        text.contains('cf') ||
+        text.contains('lw') ||
+        text.contains('rw') ||
+        text.contains('fw')) {
+      return _PitchLine.fwd;
+    }
+
+    if (text.contains('hátvéd') ||
+        text.contains('védő') ||
+        text.contains('back') ||
+        text.contains('defender') ||
+        text.contains('cb') ||
+        text.contains('lb') ||
+        text.contains('rb') ||
+        text.contains('lwb') ||
+        text.contains('rwb') ||
+        text.contains('def')) {
+      return _PitchLine.def;
+    }
+
+    if (text.contains('irányító') ||
+        text.contains('középpály') ||
+        text.contains('szűrő') ||
+        text.contains('kp') ||
+        text.contains('mid') ||
+        text.contains('cam') ||
+        text.contains('cdm') ||
+        text.contains('cm') ||
+        text.contains('lm') ||
+        text.contains('rm')) {
+      return _PitchLine.mid;
+    }
+
+    final n = int.tryParse(numStr) ?? 0;
+    if (n == 1) return _PitchLine.gk;
+    if (n >= 2 && n <= 5) return _PitchLine.def;
+    if (n >= 6 && n <= 8) return _PitchLine.mid;
+    if (n >= 9 && n <= 11) return _PitchLine.fwd;
+    return _PitchLine.mid;
+  }
+
+  /// Balról jobbra rendezési kulcs:
+  /// -1 = bal oldal (balhátvéd, balszélső, baloldali...)
+  ///  0 = középső / irányító / középcsatár / kp.
+  /// +1 = jobb oldal (jobbhátvéd, jobbszélső, jobboldali...)
+  int _horizontalSortOrder(LineupPlayer pl) {
+    final text = '${pl.position} ${pl.name}'.toLowerCase();
+
+    final isLeft = text.contains('bal') ||
+        text.contains('left') ||
+        RegExp(r'\b(lb|lwb|lw|lm)\b').hasMatch(text);
+    final isRight = text.contains('jobb') ||
+        text.contains('right') ||
+        RegExp(r'\b(rb|rwb|rw|rm)\b').hasMatch(text);
+
+    if (isLeft && !isRight) return -1;
+    if (isRight && !isLeft) return 1;
+
+    final isCenter = text.contains('közép') ||
+        text.contains('irányító') ||
+        text.contains('szűrő') ||
+        text.contains('kp') ||
+        RegExp(r'\b(cb|cdm|cm|cam|cf|st)\b').hasMatch(text);
+    if (isCenter) return 0;
+
+    return 0;
+  }
+
   List<int> _parseFormationCounts(String formation) {
-    final matches = RegExp(r'\d+').allMatches(formation).map((m) => int.tryParse(m.group(0)!) ?? 0).where((n) => n > 0).toList();
-    return matches;
+    return RegExp(r'\d+')
+        .allMatches(formation)
+        .map((m) => int.tryParse(m.group(0)!) ?? 0)
+        .where((n) => n > 0)
+        .toList();
   }
 
   List<List<LineupPlayer>> _buildRows(List<LineupPlayer> starters, String formation) {
     if (starters.isEmpty) return const [];
 
-    LineupPlayer? gkPlayer;
-    final outfield = <LineupPlayer>[];
+    final gk = <LineupPlayer>[];
+    final def = <LineupPlayer>[];
+    final mid = <LineupPlayer>[];
+    final fwd = <LineupPlayer>[];
 
     for (final pl in starters) {
-      final pos = pl.position.trim().toUpperCase();
-      final nameUp = pl.name.trim().toUpperCase();
-      final isGk = gkPlayer == null &&
-          (pl.number.trim() == '1' ||
-              pos.startsWith('G') ||
-              pos.contains('GK') ||
-              pos.contains('KAPUS') ||
-              nameUp.startsWith('KAPUS'));
-      if (isGk) {
-        gkPlayer = pl;
-      } else {
-        outfield.add(pl);
+      switch (_classifyLine(pl)) {
+        case _PitchLine.gk:
+          if (gk.isEmpty) {
+            gk.add(pl);
+          } else {
+            mid.add(pl);
+          }
+          break;
+        case _PitchLine.def:
+          def.add(pl);
+          break;
+        case _PitchLine.mid:
+          mid.add(pl);
+          break;
+        case _PitchLine.fwd:
+          fwd.add(pl);
+          break;
       }
     }
 
+    int compareHoriz(LineupPlayer a, LineupPlayer b) {
+      final ha = _horizontalSortOrder(a);
+      final hb = _horizontalSortOrder(b);
+      if (ha != hb) return ha.compareTo(hb);
+      final na = int.tryParse(a.number.trim()) ?? 99;
+      final nb = int.tryParse(b.number.trim()) ?? 99;
+      return na.compareTo(nb);
+    }
+
+    def.sort(compareHoriz);
+    mid.sort(compareHoriz);
+    fwd.sort(compareHoriz);
+
     final counts = _parseFormationCounts(formation);
-    if (counts.isNotEmpty) {
-      final sumCounts = counts.fold<int>(0, (a, b) => a + b);
-      final pool = sumCounts <= outfield.length ? outfield : starters;
+
+    // Ha pl. 4-2-3-1 (4 szám van a formációban) és a középpályásokat két sorra bontjuk
+    if (counts.length == 4 && mid.length >= counts[1] + counts[2]) {
       final rows = <List<LineupPlayer>>[];
-      var cursor = 0;
+      if (fwd.isNotEmpty) rows.add(fwd);
 
-      // Felülről lefelé: támadók -> középpályások -> védők -> kapus
-      for (final cnt in counts.reversed) {
-        if (cursor >= pool.length) break;
-        final take = cnt.clamp(1, pool.length - cursor);
-        rows.add(pool.sublist(cursor, cursor + take));
-        cursor += take;
-      }
+      final amCount = counts[2].clamp(1, mid.length);
+      final attackingMid = mid.sublist(0, amCount);
+      final holdingMid = mid.sublist(amCount);
 
-      if (cursor < pool.length && rows.isNotEmpty) {
-        rows.first.addAll(pool.sublist(cursor));
-      }
-
-      if (gkPlayer != null) {
-        rows.add([gkPlayer]);
-      }
+      if (attackingMid.isNotEmpty) rows.add(attackingMid);
+      if (holdingMid.isNotEmpty) rows.add(holdingMid);
+      if (def.isNotEmpty) rows.add(def);
+      if (gk.isNotEmpty) rows.add(gk);
       return rows;
     }
 
     final rows = <List<LineupPlayer>>[];
-    for (var i = 0; i < outfield.length; i += 4) {
-      rows.add(outfield.sublist(i, (i + 4).clamp(0, outfield.length)));
+    if (fwd.isNotEmpty) rows.add(fwd);
+    if (mid.isNotEmpty) rows.add(mid);
+    if (def.isNotEmpty) rows.add(def);
+    if (gk.isNotEmpty) rows.add(gk);
+
+    if (rows.isNotEmpty) return rows;
+
+    final fallback = <List<LineupPlayer>>[];
+    for (var i = 0; i < starters.length; i += 4) {
+      fallback.add(starters.sublist(i, (i + 4).clamp(0, starters.length)));
     }
-    final ordered = rows.reversed.toList();
-    if (gkPlayer != null) {
-      ordered.add([gkPlayer]);
-    }
-    return ordered;
+    return fallback.reversed.toList();
   }
 
   @override
