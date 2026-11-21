@@ -222,48 +222,86 @@ class FormationPitchView extends StatelessWidget {
     required this.lineup,
   });
 
-  List<List<LineupPlayer>> _buildRows(List<LineupPlayer> starters) {
-    if (starters.isEmpty) return const [];
-    final gk = <LineupPlayer>[];
-    final def = <LineupPlayer>[];
-    final mid = <LineupPlayer>[];
-    final fwd = <LineupPlayer>[];
+  String _cleanPlayerLabel(LineupPlayer pl) {
+    var raw = pl.name.replaceAll(RegExp(r'\s*\([^)]*\)'), '').trim();
+    if (raw.isEmpty) raw = pl.position.trim();
+    if (raw.isEmpty) return 'Játékos';
+    final parts = raw.split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
+    if (parts.length == 1) return parts.first;
+    final last = parts.last;
+    if (last.endsWith('.') && last.length <= 3 && parts.length >= 2) {
+      return '${parts[parts.length - 2]} $last';
+    }
+    return last;
+  }
 
-    for (final p in starters) {
-      final pos = p.position.trim().toUpperCase();
-      if (pos.startsWith('G') || pos.contains('GK') || pos.contains('KAPUS')) {
-        gk.add(p);
-      } else if (pos.startsWith('D') || pos.contains('DEF') || pos.contains('VÉDŐ')) {
-        def.add(p);
-      } else if (pos.startsWith('M') || pos.contains('MID') || pos.contains('KÖZÉP')) {
-        mid.add(p);
-      } else if (pos.startsWith('F') || pos.startsWith('A') || pos.contains('FWD') || pos.contains('ATT') || pos.contains('CSATÁR')) {
-        fwd.add(p);
+  List<int> _parseFormationCounts(String formation) {
+    final matches = RegExp(r'\d+').allMatches(formation).map((m) => int.tryParse(m.group(0)!) ?? 0).where((n) => n > 0).toList();
+    return matches;
+  }
+
+  List<List<LineupPlayer>> _buildRows(List<LineupPlayer> starters, String formation) {
+    if (starters.isEmpty) return const [];
+
+    LineupPlayer? gkPlayer;
+    final outfield = <LineupPlayer>[];
+
+    for (final pl in starters) {
+      final pos = pl.position.trim().toUpperCase();
+      final nameUp = pl.name.trim().toUpperCase();
+      final isGk = gkPlayer == null &&
+          (pl.number.trim() == '1' ||
+              pos.startsWith('G') ||
+              pos.contains('GK') ||
+              pos.contains('KAPUS') ||
+              nameUp.startsWith('KAPUS'));
+      if (isGk) {
+        gkPlayer = pl;
       } else {
-        mid.add(p);
+        outfield.add(pl);
       }
     }
 
-    if (gk.isNotEmpty && (def.isNotEmpty || mid.isNotEmpty || fwd.isNotEmpty)) {
+    final counts = _parseFormationCounts(formation);
+    if (counts.isNotEmpty) {
+      final sumCounts = counts.fold<int>(0, (a, b) => a + b);
+      final pool = sumCounts <= outfield.length ? outfield : starters;
       final rows = <List<LineupPlayer>>[];
-      if (fwd.isNotEmpty) rows.add(fwd);
-      if (mid.isNotEmpty) rows.add(mid);
-      if (def.isNotEmpty) rows.add(def);
-      rows.add(gk);
+      var cursor = 0;
+
+      // Felülről lefelé: támadók -> középpályások -> védők -> kapus
+      for (final cnt in counts.reversed) {
+        if (cursor >= pool.length) break;
+        final take = cnt.clamp(1, pool.length - cursor);
+        rows.add(pool.sublist(cursor, cursor + take));
+        cursor += take;
+      }
+
+      if (cursor < pool.length && rows.isNotEmpty) {
+        rows.first.addAll(pool.sublist(cursor));
+      }
+
+      if (gkPlayer != null) {
+        rows.add([gkPlayer]);
+      }
       return rows;
     }
 
     final rows = <List<LineupPlayer>>[];
-    for (var i = 0; i < starters.length; i += 4) {
-      rows.add(starters.sublist(i, (i + 4).clamp(0, starters.length)));
+    for (var i = 0; i < outfield.length; i += 4) {
+      rows.add(outfield.sublist(i, (i + 4).clamp(0, outfield.length)));
     }
-    return rows.reversed.toList();
+    final ordered = rows.reversed.toList();
+    if (gkPlayer != null) {
+      ordered.add([gkPlayer]);
+    }
+    return ordered;
   }
 
   @override
   Widget build(BuildContext context) {
     final p = AppThemeController.instance.palette;
-    final rows = _buildRows(lineup.starters);
+    final rows = _buildRows(lineup.starters, lineup.formation);
     if (rows.isEmpty) return const SizedBox.shrink();
 
     return Container(
@@ -290,7 +328,7 @@ class FormationPitchView extends StatelessWidget {
                 Expanded(
                   child: Text(
                     '$teamName • ${lineup.formation}',
-                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5),
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: p.textPrimary),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -328,7 +366,7 @@ class FormationPitchView extends StatelessWidget {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: rowPlayers.map((pl) {
-                        final shortName = pl.name.trim().split(RegExp(r'\s+')).last;
+                        final label = _cleanPlayerLabel(pl);
                         return Flexible(
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
@@ -346,7 +384,7 @@ class FormationPitchView extends StatelessWidget {
                                 child: Text(
                                   pl.number.isNotEmpty ? pl.number : '•',
                                   style: const TextStyle(
-                                    color: Colors.black,
+                                    color: Colors.white,
                                     fontWeight: FontWeight.w900,
                                     fontSize: 11,
                                   ),
@@ -354,13 +392,13 @@ class FormationPitchView extends StatelessWidget {
                               ),
                               const SizedBox(height: 3),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
                                 decoration: BoxDecoration(
-                                  color: Colors.black54,
+                                  color: Colors.black.withAlpha(155),
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(
-                                  shortName,
+                                  label,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
