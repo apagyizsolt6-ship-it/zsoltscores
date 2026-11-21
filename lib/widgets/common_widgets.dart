@@ -216,12 +216,14 @@ class FormationPitchView extends StatelessWidget {
   final String teamName;
   final Color accent;
   final TeamLineup lineup;
+  final List<MatchEvent> events;
 
   const FormationPitchView({
     super.key,
     required this.teamName,
     required this.accent,
     required this.lineup,
+    this.events = const [],
   });
 
   String _cleanPlayerLabel(LineupPlayer pl) {
@@ -235,6 +237,48 @@ class FormationPitchView extends StatelessWidget {
       return '${parts[parts.length - 2]} $last';
     }
     return last;
+  }
+
+  String _shortRoleTag(LineupPlayer pl, _PitchLine line) {
+    final text = '${pl.position} ${pl.name}'.toLowerCase();
+    if (line == _PitchLine.gk) return 'GK';
+
+    final isLeft = text.contains('bal') || text.contains('left') || RegExp(r'\b(lb|lwb|lw|lm)\b').hasMatch(text);
+    final isRight = text.contains('jobb') || text.contains('right') || RegExp(r'\b(rb|rwb|rw|rm)\b').hasMatch(text);
+
+    if (line == _PitchLine.def) {
+      if (isLeft) return 'LB';
+      if (isRight) return 'RB';
+      return 'CB';
+    }
+    if (line == _PitchLine.fwd) {
+      if (isLeft) return 'LW';
+      if (isRight) return 'RW';
+      return 'ST';
+    }
+    if (text.contains('irányító') || RegExp(r'\bcam\b').hasMatch(text)) return 'CAM';
+    if (text.contains('szűrő') || RegExp(r'\bcdm\b').hasMatch(text)) return 'CDM';
+    if (isLeft) return 'LM';
+    if (isRight) return 'RM';
+    return 'CM';
+  }
+
+  String? _eventBadgeForPlayer(LineupPlayer pl) {
+    if (events.isEmpty) return null;
+    final cleanName = pl.name.replaceAll(RegExp(r'\s*\([^)]*\)'), '').trim().toLowerCase();
+    final shortLast = _cleanPlayerLabel(pl).toLowerCase();
+
+    for (final ev in events.reversed) {
+      final pName = ev.player.trim().toLowerCase();
+      if (pName.isEmpty) continue;
+      if (pName.contains(shortLast) || (cleanName.length >= 4 && pName.contains(cleanName))) {
+        if (ev.type == 'goal') return '⚽';
+        if (ev.type == 'red') return '🟥';
+        if (ev.type == 'yellow') return '🟨';
+        if (ev.type == 'sub') return '🔄';
+      }
+    }
+    return null;
   }
 
   _PitchLine _classifyLine(LineupPlayer pl) {
@@ -297,10 +341,6 @@ class FormationPitchView extends StatelessWidget {
     return _PitchLine.mid;
   }
 
-  /// Balról jobbra rendezési kulcs:
-  /// -1 = bal oldal (balhátvéd, balszélső, baloldali...)
-  ///  0 = középső / irányító / középcsatár / kp.
-  /// +1 = jobb oldal (jobbhátvéd, jobbszélső, jobboldali...)
   int _horizontalSortOrder(LineupPlayer pl) {
     final text = '${pl.position} ${pl.name}'.toLowerCase();
 
@@ -376,7 +416,6 @@ class FormationPitchView extends StatelessWidget {
 
     final counts = _parseFormationCounts(formation);
 
-    // Ha pl. 4-2-3-1 (4 szám van a formációban) és a középpályásokat két sorra bontjuk
     if (counts.length == 4 && mid.length >= counts[1] + counts[2]) {
       final rows = <List<LineupPlayer>>[];
       if (fwd.isNotEmpty) rows.add(fwd);
@@ -476,34 +515,56 @@ class FormationPitchView extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: rowPlayers.map((pl) {
                         final label = _cleanPlayerLabel(pl);
+                        final line = _classifyLine(pl);
+                        final roleTag = _shortRoleTag(pl, line);
+                        final evBadge = _eventBadgeForPlayer(pl);
+
                         return Flexible(
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Container(
-                                width: 30,
-                                height: 30,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: accent,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white, width: 1.6),
-                                  boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 4)],
-                                ),
-                                child: Text(
-                                  pl.number.isNotEmpty ? pl.number : '•',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 11,
+                              Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  Container(
+                                    width: 30,
+                                    height: 30,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      color: accent,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: Colors.white, width: 1.6),
+                                      boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 4)],
+                                    ),
+                                    child: Text(
+                                      pl.number.isNotEmpty ? pl.number : '•',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 11,
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                  if (evBadge != null)
+                                    Positioned(
+                                      right: -5,
+                                      top: -4,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(1.5),
+                                        decoration: const BoxDecoration(
+                                          color: Colors.black87,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: Text(evBadge, style: const TextStyle(fontSize: 9.5)),
+                                      ),
+                                    ),
+                                ],
                               ),
                               const SizedBox(height: 3),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
                                 decoration: BoxDecoration(
-                                  color: Colors.black.withAlpha(155),
+                                  color: Colors.black.withAlpha(160),
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(
@@ -515,6 +576,16 @@ class FormationPitchView extends StatelessWidget {
                                     fontSize: 10,
                                     fontWeight: FontWeight.w700,
                                   ),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                roleTag,
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.3,
                                 ),
                               ),
                             ],
