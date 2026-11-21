@@ -996,7 +996,6 @@ class SportsApiService {
     final key = ApiConfig.activeKey;
     final collected = <String, MatchData>{};
 
-    // 1. Mai napon lekérjük az élő/mai meccseket a /livescores végpontról
     if (isToday) {
       await ApiCache.recordNetworkRequest();
       final liveUri = Uri.parse('$_statpalBaseUrl/livescores?access_key=$key');
@@ -1011,7 +1010,6 @@ class SportsApiService {
       }
     }
 
-    // 2. Ha nem ma van (vagy kiegészítésként), lekérjük a kiemelt bajnokságok meccseit adott dátumra
     if (!isToday || collected.isEmpty) {
       for (final entry in statpalLeagueSlugs.entries) {
         try {
@@ -1156,7 +1154,6 @@ class SportsApiService {
     return FetchResult(data: rows, fromCache: false, fetchedAt: now);
   }
 
-  /// StatPal V2 beágyazott `livescores.league[].match[]` és sima `matches[]` struktúrák feldolgozása
   static List<MatchData> _extractMatchesFromStatPal(
     dynamic decoded, {
     String? filterDate,
@@ -1203,7 +1200,6 @@ class SportsApiService {
   }
 
   static bool _matchesNormalizedDate(String rawDate, String isoDate) {
-    // StatPal gyakran dd.MM.yyyy formátumot ad vissza (pl. 21.11.2026)
     final parts = rawDate.split('.');
     if (parts.length == 3) {
       final normalized = '${parts[2].padLeft(4, '0')}-${parts[1].padLeft(2, '0')}-${parts[0].padLeft(2, '0')}';
