@@ -57,7 +57,7 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
       margin: const EdgeInsets.only(right: 6),
       alignment: Alignment.center,
       decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
-      child: Text(code, style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 10.5)),
+      child: Text(code, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10.5)),
     );
   }
 
@@ -104,11 +104,11 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(widget.teamName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                      Text(widget.teamName, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: p.textPrimary)),
                       const SizedBox(height: 4),
                       Text(
                         _isFav ? '★ Kedvenc csapat (kiemelt a meccseknél)' : 'Koppints a csillagra a kedvenceléshez',
-                        style: TextStyle(fontSize: 12, color: _isFav ? const Color(0xFFFFD54F) : Colors.white70),
+                        style: TextStyle(fontSize: 12, color: _isFav ? p.goldAccent : p.textSecondary),
                       ),
                     ],
                   ),
@@ -130,7 +130,7 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Utolsó 5 meccs formája', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                    Text('Utolsó 5 meccs formája', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: p.textPrimary)),
                     Text('$pts pont / 15', style: TextStyle(color: p.primaryAccent, fontWeight: FontWeight.w900)),
                   ],
                 ),
@@ -143,13 +143,13 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 7),
                         decoration: BoxDecoration(
-                          color: p.scaffoldBg.withAlpha(170),
+                          color: p.scaffoldBg.withAlpha(200),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Column(
                           children: [
                             Text('$wCount', style: TextStyle(fontWeight: FontWeight.w900, color: p.primaryAccent, fontSize: 13)),
-                            const Text('Győzelem', style: TextStyle(fontSize: 10, color: Colors.white54)),
+                            Text('Győzelem', style: TextStyle(fontSize: 10, color: p.textMuted)),
                           ],
                         ),
                       ),
@@ -159,13 +159,13 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 7),
                         decoration: BoxDecoration(
-                          color: p.scaffoldBg.withAlpha(170),
+                          color: p.scaffoldBg.withAlpha(200),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Column(
                           children: [
                             Text('$dCount', style: TextStyle(fontWeight: FontWeight.w900, color: p.goldAccent, fontSize: 13)),
-                            const Text('Döntetlen', style: TextStyle(fontSize: 10, color: Colors.white54)),
+                            Text('Döntetlen', style: TextStyle(fontSize: 10, color: p.textMuted)),
                           ],
                         ),
                       ),
@@ -175,13 +175,13 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 7),
                         decoration: BoxDecoration(
-                          color: p.scaffoldBg.withAlpha(170),
+                          color: p.scaffoldBg.withAlpha(200),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Column(
                           children: [
                             Text('$lCount', style: TextStyle(fontWeight: FontWeight.w900, color: p.liveRed, fontSize: 13)),
-                            const Text('Vereség', style: TextStyle(fontSize: 10, color: Colors.white54)),
+                            Text('Vereség', style: TextStyle(fontSize: 10, color: p.textMuted)),
                           ],
                         ),
                       ),
@@ -192,7 +192,7 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          const Text('Kapcsolódó meccsek', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          Text('Kapcsolódó meccsek', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: p.textPrimary)),
           const SizedBox(height: 8),
           if (widget.relatedMatches.isEmpty)
             Container(
@@ -202,7 +202,7 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: p.borderSubtle),
               ),
-              child: const Text('A kiválasztott napon nincs meccs a csapattal.', style: TextStyle(color: Colors.white60)),
+              child: Text('A kiválasztott napon nincs meccs a csapattal.', style: TextStyle(color: p.textMuted)),
             )
           else
             ...widget.relatedMatches.map((m) => Container(
@@ -306,7 +306,7 @@ class _StandingsTabState extends State<StandingsTab> {
         width: 22,
         height: 22,
         alignment: Alignment.center,
-        decoration: BoxDecoration(color: const Color(0xFFFFD54F).withAlpha(35), borderRadius: BorderRadius.circular(6)),
+        decoration: BoxDecoration(color: p.goldAccent.withAlpha(35), borderRadius: BorderRadius.circular(6)),
         child: const Text('🥇', style: TextStyle(fontSize: 12)),
       );
     }
@@ -315,7 +315,7 @@ class _StandingsTabState extends State<StandingsTab> {
         width: 22,
         height: 22,
         alignment: Alignment.center,
-        decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(6)),
+        decoration: BoxDecoration(color: p.borderSubtle, borderRadius: BorderRadius.circular(6)),
         child: const Text('🥈', style: TextStyle(fontSize: 12)),
       );
     }
@@ -324,13 +324,13 @@ class _StandingsTabState extends State<StandingsTab> {
         width: 22,
         height: 22,
         alignment: Alignment.center,
-        decoration: BoxDecoration(color: const Color(0xFFFF8A65).withAlpha(30), borderRadius: BorderRadius.circular(6)),
+        decoration: BoxDecoration(color: const Color(0xFFFF8A65).withAlpha(35), borderRadius: BorderRadius.circular(6)),
         child: const Text('🥉', style: TextStyle(fontSize: 12)),
       );
     }
     return SizedBox(
       width: 22,
-      child: Text('$pos.', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: p.primaryAccent.withAlpha(210))),
+      child: Text('$pos.', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: p.primaryAccent)),
     );
   }
 
@@ -352,7 +352,7 @@ class _StandingsTabState extends State<StandingsTab> {
       decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(3)),
       child: Text(
         code.substring(0, 1),
-        style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 8.5),
+        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 8.5),
       ),
     );
   }
@@ -409,13 +409,13 @@ class _StandingsTabState extends State<StandingsTab> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Bajnoki Tabellák 🏆', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                    Text('Bajnoki Tabellák 🏆', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: p.textPrimary)),
                     const SizedBox(height: 4),
                     Text(
                       _isLiveRows
                           ? '${ApiConfig.providerName} • ${_rows.length} csapatos állás'
                           : '${ApiConfig.providerName} • Részletes állás, gólok & forma',
-                      style: TextStyle(fontSize: 12, color: _isLiveRows ? p.primaryAccent : Colors.amberAccent),
+                      style: TextStyle(fontSize: 12, color: _isLiveRows ? p.primaryAccent : p.goldAccent, fontWeight: FontWeight.w600),
                     ),
                   ],
                 ),
@@ -425,12 +425,12 @@ class _StandingsTabState extends State<StandingsTab> {
                       IconButton(
                         visualDensity: VisualDensity.compact,
                         onPressed: () => _loadStandings(forceRefresh: true),
-                        icon: const Icon(Icons.refresh, color: Colors.white70),
+                        icon: Icon(Icons.refresh, color: p.textSecondary),
                       ),
                     IconButton(
                       visualDensity: VisualDensity.compact,
                       onPressed: widget.onOpenSettings,
-                      icon: const Icon(Icons.settings, color: Colors.white),
+                      icon: Icon(Icons.settings, color: p.textPrimary),
                     ),
                   ],
                 ),
@@ -444,13 +444,13 @@ class _StandingsTabState extends State<StandingsTab> {
               margin: const EdgeInsets.fromLTRB(14, 8, 14, 0),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
               decoration: BoxDecoration(
-                color: _isLiveRows ? p.primaryAccent.withAlpha(24) : Colors.amber.withAlpha(30),
+                color: _isLiveRows ? p.primaryAccent.withAlpha(24) : p.goldAccent.withAlpha(28),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: _isLiveRows ? p.primaryAccent.withAlpha(90) : Colors.amber.withAlpha(120)),
+                border: Border.all(color: _isLiveRows ? p.primaryAccent.withAlpha(90) : p.goldAccent.withAlpha(120)),
               ),
               child: Text(
                 _statusBanner!,
-                style: TextStyle(fontSize: 11, color: _isLiveRows ? p.primaryAccent : Colors.amberAccent),
+                style: TextStyle(fontSize: 11, color: _isLiveRows ? p.primaryAccent : p.goldAccent, fontWeight: FontWeight.w600),
                 textAlign: TextAlign.center,
               ),
             ),
@@ -470,7 +470,10 @@ class _StandingsTabState extends State<StandingsTab> {
                     selected: isSelected,
                     selectedColor: p.primaryAccent,
                     backgroundColor: p.cardElevated,
-                    labelStyle: TextStyle(color: isSelected ? Colors.black : Colors.white, fontWeight: FontWeight.bold),
+                    labelStyle: TextStyle(
+                      color: isSelected ? Colors.white : p.textPrimary,
+                      fontWeight: FontWeight.bold,
+                    ),
                     onSelected: (_) {
                       setState(() => selectedLeague = l);
                       _loadStandings(forceRefresh: false);
@@ -490,7 +493,10 @@ class _StandingsTabState extends State<StandingsTab> {
                   selected: !showScorers && venueMode == 'all',
                   selectedColor: p.secondaryAccent,
                   backgroundColor: p.cardElevated,
-                  labelStyle: TextStyle(color: (!showScorers && venueMode == 'all') ? Colors.black : Colors.white, fontWeight: FontWeight.bold),
+                  labelStyle: TextStyle(
+                    color: (!showScorers && venueMode == 'all') ? Colors.white : p.textPrimary,
+                    fontWeight: FontWeight.bold,
+                  ),
                   onSelected: (_) {
                     setState(() {
                       showScorers = false;
@@ -505,7 +511,10 @@ class _StandingsTabState extends State<StandingsTab> {
                   selected: !showScorers && venueMode == 'home',
                   selectedColor: p.secondaryAccent,
                   backgroundColor: p.cardElevated,
-                  labelStyle: TextStyle(color: (!showScorers && venueMode == 'home') ? Colors.black : Colors.white, fontWeight: FontWeight.bold),
+                  labelStyle: TextStyle(
+                    color: (!showScorers && venueMode == 'home') ? Colors.white : p.textPrimary,
+                    fontWeight: FontWeight.bold,
+                  ),
                   onSelected: (_) {
                     setState(() {
                       showScorers = false;
@@ -520,7 +529,10 @@ class _StandingsTabState extends State<StandingsTab> {
                   selected: !showScorers && venueMode == 'away',
                   selectedColor: p.secondaryAccent,
                   backgroundColor: p.cardElevated,
-                  labelStyle: TextStyle(color: (!showScorers && venueMode == 'away') ? Colors.black : Colors.white, fontWeight: FontWeight.bold),
+                  labelStyle: TextStyle(
+                    color: (!showScorers && venueMode == 'away') ? Colors.white : p.textPrimary,
+                    fontWeight: FontWeight.bold,
+                  ),
                   onSelected: (_) {
                     setState(() {
                       showScorers = false;
@@ -535,7 +547,10 @@ class _StandingsTabState extends State<StandingsTab> {
                   selected: showScorers,
                   selectedColor: p.goldAccent,
                   backgroundColor: p.cardElevated,
-                  labelStyle: TextStyle(color: showScorers ? Colors.black : Colors.white, fontWeight: FontWeight.bold),
+                  labelStyle: TextStyle(
+                    color: showScorers ? Colors.white : p.textPrimary,
+                    fontWeight: FontWeight.bold,
+                  ),
                   onSelected: (_) => setState(() => showScorers = true),
                 ),
               ],
@@ -545,14 +560,14 @@ class _StandingsTabState extends State<StandingsTab> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               child: Row(
-                children: const [
-                  SizedBox(width: 26, child: Text('#', style: TextStyle(color: Colors.white54, fontSize: 11))),
-                  Expanded(child: Text('Csapat', style: TextStyle(color: Colors.white54, fontSize: 11))),
-                  SizedBox(width: 24, child: Text('M', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 11))),
-                  SizedBox(width: 58, child: Text('GY/D/V', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 10.5))),
-                  SizedBox(width: 44, child: Text('Gól', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 11))),
-                  SizedBox(width: 34, child: Text('GK', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 11))),
-                  SizedBox(width: 32, child: Text('P', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold, fontSize: 11))),
+                children: [
+                  SizedBox(width: 26, child: Text('#', style: TextStyle(color: p.textMuted, fontSize: 11))),
+                  Expanded(child: Text('Csapat', style: TextStyle(color: p.textMuted, fontSize: 11))),
+                  SizedBox(width: 24, child: Text('M', textAlign: TextAlign.center, style: TextStyle(color: p.textMuted, fontSize: 11))),
+                  SizedBox(width: 58, child: Text('GY/D/V', textAlign: TextAlign.center, style: TextStyle(color: p.textMuted, fontSize: 10.5))),
+                  SizedBox(width: 44, child: Text('Gól', textAlign: TextAlign.center, style: TextStyle(color: p.textMuted, fontSize: 11))),
+                  SizedBox(width: 34, child: Text('GK', textAlign: TextAlign.center, style: TextStyle(color: p.textMuted, fontSize: 11))),
+                  SizedBox(width: 32, child: Text('P', textAlign: TextAlign.center, style: TextStyle(color: p.textSecondary, fontWeight: FontWeight.bold, fontSize: 11))),
                 ],
               ),
             ),
@@ -564,7 +579,7 @@ class _StandingsTabState extends State<StandingsTab> {
                         child: Text(
                           _statusBanner ?? 'Ehhez a bajnoksághoz jelenleg nem érhető el tabella.',
                           textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.white60),
+                          style: TextStyle(color: p.textMuted),
                         ),
                       ),
                     )
@@ -612,15 +627,15 @@ class _StandingsTabState extends State<StandingsTab> {
                                         style: TextStyle(
                                           fontWeight: isTop3 || isFav ? FontWeight.w800 : FontWeight.w700,
                                           fontSize: 12.5,
-                                          color: isFav ? const Color(0xFFFFD54F) : Colors.white,
+                                          color: isFav ? p.goldAccent : p.textPrimary,
                                         ),
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
-                                    SizedBox(width: 24, child: Text('${r.played}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 11.5))),
-                                    SizedBox(width: 58, child: Text(wdlText, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 11))),
-                                    SizedBox(width: 44, child: Text(goalsText, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 11))),
-                                    SizedBox(width: 34, child: Text(r.gd > 0 ? '+${r.gd}' : '${r.gd}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 11.5))),
+                                    SizedBox(width: 24, child: Text('${r.played}', textAlign: TextAlign.center, style: TextStyle(color: p.textSecondary, fontSize: 11.5))),
+                                    SizedBox(width: 58, child: Text(wdlText, textAlign: TextAlign.center, style: TextStyle(color: p.textSecondary, fontSize: 11))),
+                                    SizedBox(width: 44, child: Text(goalsText, textAlign: TextAlign.center, style: TextStyle(color: p.textSecondary, fontSize: 11))),
+                                    SizedBox(width: 34, child: Text(r.gd > 0 ? '+${r.gd}' : '${r.gd}', textAlign: TextAlign.center, style: TextStyle(color: p.textSecondary, fontSize: 11.5))),
                                     SizedBox(width: 32, child: Text('${r.points}', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w900, color: p.primaryAccent, fontSize: 13))),
                                   ],
                                 ),
@@ -631,7 +646,7 @@ class _StandingsTabState extends State<StandingsTab> {
                                       const SizedBox(width: 30),
                                       Row(children: r.form.map(_miniFormDot).toList()),
                                       const Spacer(),
-                                      const Text('Profil ›', style: TextStyle(fontSize: 10, color: Colors.white38)),
+                                      Text('Profil ›', style: TextStyle(fontSize: 10, color: p.textMuted)),
                                     ],
                                   ),
                                 ],
@@ -667,14 +682,14 @@ class _StandingsTabState extends State<StandingsTab> {
                           height: 26,
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            color: isTop ? p.goldAccent.withAlpha(35) : Colors.white10,
+                            color: isTop ? p.goldAccent.withAlpha(35) : p.borderSubtle,
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
                             '${sc.rank}.',
                             style: TextStyle(
                               fontWeight: FontWeight.w900,
-                              color: isTop ? p.goldAccent : Colors.white70,
+                              color: isTop ? p.goldAccent : p.textSecondary,
                               fontSize: 12,
                             ),
                           ),
@@ -684,8 +699,8 @@ class _StandingsTabState extends State<StandingsTab> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(sc.player, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
-                              Text(sc.team, style: const TextStyle(fontSize: 11, color: Colors.white60)),
+                              Text(sc.player, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: p.textPrimary)),
+                              Text(sc.team, style: TextStyle(fontSize: 11, color: p.textSecondary)),
                             ],
                           ),
                         ),
@@ -698,7 +713,7 @@ class _StandingsTabState extends State<StandingsTab> {
                           child: Text('⚽ ${sc.goals}', style: TextStyle(fontWeight: FontWeight.w900, color: p.primaryAccent, fontSize: 12)),
                         ),
                         const SizedBox(width: 8),
-                        Text('🅰️ ${sc.assists}', style: const TextStyle(fontSize: 12, color: Colors.white70)),
+                        Text('🅰️ ${sc.assists}', style: TextStyle(fontSize: 12, color: p.textSecondary)),
                       ],
                     ),
                   );
