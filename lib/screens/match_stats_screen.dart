@@ -80,7 +80,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
       decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
       child: Text(
         code,
-        style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 10),
+        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10),
       ),
     );
   }
@@ -155,7 +155,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                   p: p,
                   label: 'Játék-arány',
                   value: '$homeDomPct : $awayDomPct',
-                  accent: Colors.white,
+                  accent: p.textPrimary,
                 ),
               ),
               const SizedBox(width: 8),
@@ -183,7 +183,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(
-        color: p.scaffoldBg.withAlpha(175),
+        color: p.scaffoldBg.withAlpha(210),
         borderRadius: BorderRadius.circular(11),
         border: Border.all(color: p.borderSubtle),
       ),
@@ -195,7 +195,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 10, color: Colors.white54),
+            style: TextStyle(fontSize: 10, color: p.textMuted),
           ),
         ],
       ),
@@ -242,7 +242,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
               else if (_match.isLive && _match.isFromApi)
                 Text('Élő • $intervalSec mp • Frissítve: $updClock', style: TextStyle(fontSize: 11, color: p.primaryAccent))
               else
-                Text('Frissítve: $updClock', style: const TextStyle(fontSize: 11, color: Colors.white60)),
+                Text('Frissítve: $updClock', style: TextStyle(fontSize: 11, color: p.textMuted)),
             ],
           ),
           backgroundColor: p.cardElevated,
@@ -274,9 +274,9 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    _match.homeColor.withAlpha(55),
+                    _match.homeColor.withAlpha(p.isLight ? 36 : 55),
                     p.cardElevated,
-                    _match.awayColor.withAlpha(55),
+                    _match.awayColor.withAlpha(p.isLight ? 36 : 55),
                   ],
                 ),
               ),
@@ -288,12 +288,16 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                       children: [
                         CachedTeamLogo(teamName: _match.homeTeam, fallbackColor: _match.homeColor, logoUrl: _match.homeLogo, radius: 24),
                         const SizedBox(height: 8),
-                        Text(_match.homeTeam, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800)),
+                        Text(
+                          _match.homeTeam,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: p.textPrimary),
+                        ),
                         if (_match.homeForm.isNotEmpty) ...[
                           const SizedBox(height: 6),
                           Row(mainAxisAlignment: MainAxisAlignment.center, children: _match.homeForm.map(_formBadge).toList()),
                           const SizedBox(height: 3),
-                          Text('${MatchData.formPoints(_match.homeForm)}p / 5 meccs', style: const TextStyle(fontSize: 10, color: Colors.white54)),
+                          Text('${MatchData.formPoints(_match.homeForm)}p / 5 meccs', style: TextStyle(fontSize: 10, color: p.textMuted)),
                         ],
                       ],
                     ),
@@ -301,9 +305,9 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
-                      color: Colors.black.withAlpha(85),
+                      color: p.scaffoldBg.withAlpha(220),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white12),
+                      border: Border.all(color: p.borderSubtle),
                     ),
                     child: Column(
                       children: [
@@ -313,7 +317,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                             fontSize: 30,
                             fontWeight: FontWeight.w900,
                             letterSpacing: 1.2,
-                            color: _match.isLive ? p.primaryAccent : Colors.white,
+                            color: _match.isLive ? p.primaryAccent : p.textPrimary,
                           ),
                         ),
                         const SizedBox(height: 2),
@@ -322,7 +326,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
-                            color: _match.isLive ? p.primaryAccent : Colors.white60,
+                            color: _match.isLive ? p.primaryAccent : p.textMuted,
                           ),
                         ),
                       ],
@@ -333,12 +337,16 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                       children: [
                         CachedTeamLogo(teamName: _match.awayTeam, fallbackColor: _match.awayColor, logoUrl: _match.awayLogo, radius: 24),
                         const SizedBox(height: 8),
-                        Text(_match.awayTeam, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800)),
+                        Text(
+                          _match.awayTeam,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: p.textPrimary),
+                        ),
                         if (_match.awayForm.isNotEmpty) ...[
                           const SizedBox(height: 6),
                           Row(mainAxisAlignment: MainAxisAlignment.center, children: _match.awayForm.map(_formBadge).toList()),
                           const SizedBox(height: 3),
-                          Text('${MatchData.formPoints(_match.awayForm)}p / 5 meccs', style: const TextStyle(fontSize: 10, color: Colors.white54)),
+                          Text('${MatchData.formPoints(_match.awayForm)}p / 5 meccs', style: TextStyle(fontSize: 10, color: p.textMuted)),
                         ],
                       ],
                     ),
@@ -349,12 +357,12 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
             if (_match.detailNote != null)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                child: Text(_match.detailNote!, style: const TextStyle(fontSize: 11.5, color: Colors.amberAccent), textAlign: TextAlign.center),
+                child: Text(_match.detailNote!, style: TextStyle(fontSize: 11.5, color: p.goldAccent, fontWeight: FontWeight.w600), textAlign: TextAlign.center),
               ),
             TabBar(
               indicatorColor: p.primaryAccent,
               labelColor: p.primaryAccent,
-              unselectedLabelColor: Colors.white60,
+              unselectedLabelColor: p.textMuted,
               tabs: const [
                 Tab(text: 'Statisztika'),
                 Tab(text: 'Idővonal'),
@@ -378,7 +386,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                       _statBar('Szabálytalanságok', _match.foulsHome, _match.foulsAway),
                       if (_match.h2hFixtures.isNotEmpty) ...[
                         const SizedBox(height: 12),
-                        const Text('Egymás elleni meccsek (H2H)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        Text('Egymás elleni meccsek (H2H)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: p.textPrimary)),
                         const SizedBox(height: 8),
                         ..._match.h2hFixtures.map((h) => Container(
                               margin: const EdgeInsets.only(bottom: 6),
@@ -390,9 +398,15 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                               ),
                               child: Row(
                                 children: [
-                                  Text(h.dateLabel, style: const TextStyle(fontSize: 11, color: Colors.white54)),
+                                  Text(h.dateLabel, style: TextStyle(fontSize: 11, color: p.textMuted)),
                                   const SizedBox(width: 8),
-                                  Expanded(child: Text('${h.homeTeam} - ${h.awayTeam}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
+                                  Expanded(
+                                    child: Text(
+                                      '${h.homeTeam} - ${h.awayTeam}',
+                                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: p.textPrimary),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
                                   Text(h.scoreLabel, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: p.primaryAccent)),
                                 ],
                               ),
@@ -418,7 +432,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                       ),
                       Expanded(
                         child: sortedEvents.isEmpty
-                            ? const Center(child: Text('Nincs a szűrőnek megfelelő esemény.', style: TextStyle(color: Colors.white60)))
+                            ? Center(child: Text('Nincs a szűrőnek megfelelő esemény.', style: TextStyle(color: p.textMuted)))
                             : ListView.builder(
                                 padding: const EdgeInsets.all(16),
                                 itemCount: sortedEvents.length,
@@ -458,10 +472,10 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                                           child: Column(
                                             crossAxisAlignment: CrossAxisAlignment.start,
                                             children: [
-                                              Text(ev.player, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                                              Text(ev.player, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: p.textPrimary)),
                                               Text(
                                                 ev.isHome ? _match.homeTeam : _match.awayTeam,
-                                                style: const TextStyle(fontSize: 10.5, color: Colors.white54),
+                                                style: TextStyle(fontSize: 10.5, color: p.textMuted),
                                               ),
                                             ],
                                           ),
@@ -502,36 +516,42 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                         ),
                       if (_match.homeLineup != null) ...[
                         const SizedBox(height: 6),
-                        Text('${_match.homeTeam} – Kezdő (${_match.homeLineup!.formation})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        Text(
+                          '${_match.homeTeam} – Kezdő (${_match.homeLineup!.formation})',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: p.textPrimary),
+                        ),
                         const SizedBox(height: 6),
                         ..._match.homeLineup!.starters.map((pl) => _lineupTile(pl, _match.homeColor)),
                         if (_match.homeLineup!.substitutes.isNotEmpty) ...[
                           const SizedBox(height: 8),
-                          const Text('Cserék', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: Colors.white70)),
+                          Text('Cserék', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: p.textSecondary)),
                           ..._match.homeLineup!.substitutes.map((pl) => _lineupTile(pl, Colors.blueGrey)),
                         ],
                       ],
                       if (_match.awayLineup != null) ...[
                         const SizedBox(height: 16),
-                        Text('${_match.awayTeam} – Kezdő (${_match.awayLineup!.formation})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        Text(
+                          '${_match.awayTeam} – Kezdő (${_match.awayLineup!.formation})',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: p.textPrimary),
+                        ),
                         const SizedBox(height: 6),
                         ..._match.awayLineup!.starters.map((pl) => _lineupTile(pl, _match.awayColor)),
                         if (_match.awayLineup!.substitutes.isNotEmpty) ...[
                           const SizedBox(height: 8),
-                          const Text('Cserék', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: Colors.white70)),
+                          Text('Cserék', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: p.textSecondary)),
                           ..._match.awayLineup!.substitutes.map((pl) => _lineupTile(pl, Colors.blueGrey)),
                         ],
                       ],
                     ],
                   ),
                   _match.highlights.isEmpty
-                      ? const Center(
+                      ? Center(
                           child: Padding(
-                            padding: EdgeInsets.all(24),
+                            padding: const EdgeInsets.all(24),
                             child: Text(
                               'Ehhez a mérkőzéshez még nincs elérhető videó összefoglaló.',
                               textAlign: TextAlign.center,
-                              style: TextStyle(color: Colors.white60),
+                              style: TextStyle(color: p.textMuted),
                             ),
                           ),
                         )
@@ -545,9 +565,9 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                               margin: const EdgeInsets.only(bottom: 12),
                               child: ListTile(
                                 leading: Icon(Icons.play_circle_fill, color: p.primaryAccent, size: 36),
-                                title: Text(clip.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                title: Text(clip.title, style: TextStyle(fontWeight: FontWeight.bold, color: p.textPrimary)),
                                 subtitle: Text(clip.url, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: p.secondaryAccent)),
-                                trailing: const Icon(Icons.copy, size: 18),
+                                trailing: Icon(Icons.copy, size: 18, color: p.textSecondary),
                                 onTap: () {
                                   Clipboard.setData(ClipboardData(text: clip.url));
                                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Videó link másolva a vágólapra!')));
@@ -584,7 +604,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
             style: TextStyle(
               fontSize: 10.5,
               fontWeight: FontWeight.w800,
-              color: active ? Colors.black : Colors.white70,
+              color: active ? Colors.white : p.textSecondary,
             ),
           ),
         ),
@@ -609,13 +629,13 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
             backgroundColor: badgeColor,
             child: Text(
               pl.number.isNotEmpty ? pl.number : '•',
-              style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11),
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
             ),
           ),
           const SizedBox(width: 10),
-          Expanded(child: Text(pl.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
+          Expanded(child: Text(pl.name, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: p.textPrimary))),
           if (pl.position.isNotEmpty)
-            Text(pl.position, style: const TextStyle(fontSize: 11, color: Colors.white54, fontWeight: FontWeight.bold)),
+            Text(pl.position, style: TextStyle(fontSize: 11, color: p.textMuted, fontWeight: FontWeight.bold)),
         ],
       ),
     );
@@ -646,16 +666,16 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                 style: TextStyle(
                   fontWeight: FontWeight.w900,
                   fontSize: 13.5,
-                  color: homeLeads ? p.primaryAccent : Colors.white,
+                  color: homeLeads ? p.primaryAccent : p.textPrimary,
                 ),
               ),
-              Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600)),
+              Text(label, style: TextStyle(color: p.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
               Text(
                 '$awayVal',
                 style: TextStyle(
                   fontWeight: FontWeight.w900,
                   fontSize: 13.5,
-                  color: awayLeads ? p.secondaryAccent : Colors.white,
+                  color: awayLeads ? p.secondaryAccent : p.textPrimary,
                 ),
               ),
             ],
