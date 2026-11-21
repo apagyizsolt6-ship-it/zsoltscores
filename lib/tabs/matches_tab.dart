@@ -17,6 +17,7 @@ class MatchesTab extends StatefulWidget {
   final ValueChanged<String> onToggleFavorite;
   final ValueChanged<String> onTogglePinCompetition;
   final ValueChanged<int> onChangeDate;
+  final ValueChanged<DateTime> onSelectDate;
   final VoidCallback onJumpToday;
   final Future<void> Function() onRefresh;
   final VoidCallback onOpenSettings;
@@ -35,6 +36,7 @@ class MatchesTab extends StatefulWidget {
     required this.onToggleFavorite,
     required this.onTogglePinCompetition,
     required this.onChangeDate,
+    required this.onSelectDate,
     required this.onJumpToday,
     required this.onRefresh,
     required this.onOpenSettings,
@@ -65,6 +67,38 @@ class _MatchesTabState extends State<MatchesTab> {
     });
     if (value.trim().length >= 2) {
       DisplayPrefs.addRecentSearch(value.trim());
+    }
+  }
+
+  bool get _isSelectedToday {
+    final now = DateTime.now();
+    return now.year == widget.selectedDate.year &&
+        now.month == widget.selectedDate.month &&
+        now.day == widget.selectedDate.day;
+  }
+
+  Future<void> _pickDateFromCalendar() async {
+    final p = AppThemeController.instance.palette;
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: widget.selectedDate,
+      firstDate: DateTime(now.year - 2, 1, 1),
+      lastDate: DateTime(now.year + 1, 12, 31),
+      builder: (ctx, child) {
+        return Theme(
+          data: Theme.of(ctx).copyWith(
+            colorScheme: Theme.of(ctx).colorScheme.copyWith(
+              primary: p.primaryAccent,
+              secondary: p.secondaryAccent,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null && mounted) {
+      widget.onSelectDate(picked);
     }
   }
 
@@ -393,26 +427,50 @@ class _MatchesTabState extends State<MatchesTab> {
                         children: [
                           IconButton(
                             padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(minWidth: 32, minHeight: 36),
-                            icon: Icon(Icons.chevron_left, size: 19, color: p.secondaryAccent),
+                            constraints: const BoxConstraints(minWidth: 28, minHeight: 36),
+                            icon: Icon(Icons.chevron_left, size: 18, color: p.secondaryAccent),
                             onPressed: () => widget.onChangeDate(-1),
                           ),
                           GestureDetector(
-                            onTap: widget.onJumpToday,
+                            onTap: _pickDateFromCalendar,
                             child: Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 4),
-                              child: Text(
-                                _formatHungarianDayLabel(widget.selectedDate),
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: p.textPrimary),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.calendar_today, size: 12, color: p.secondaryAccent),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _formatHungarianDayLabel(widget.selectedDate),
+                                    style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: p.textPrimary),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
                           IconButton(
                             padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(minWidth: 32, minHeight: 36),
-                            icon: Icon(Icons.chevron_right, size: 19, color: p.secondaryAccent),
+                            constraints: const BoxConstraints(minWidth: 28, minHeight: 36),
+                            icon: Icon(Icons.chevron_right, size: 18, color: p.secondaryAccent),
                             onPressed: () => widget.onChangeDate(1),
                           ),
+                          if (!_isSelectedToday)
+                            GestureDetector(
+                              onTap: widget.onJumpToday,
+                              child: Container(
+                                margin: const EdgeInsets.only(right: 5),
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: p.primaryAccent.withAlpha(28),
+                                  borderRadius: BorderRadius.circular(7),
+                                  border: Border.all(color: p.primaryAccent.withAlpha(120)),
+                                ),
+                                child: Text(
+                                  'MA',
+                                  style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w900, color: p.primaryAccent),
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ),
