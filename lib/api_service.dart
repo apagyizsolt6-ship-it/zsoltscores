@@ -899,21 +899,22 @@ final Map<String, List<TopScorerRow>> sampleTopScorers = {
 class SportsApiService {
   SportsApiService._();
 
+  /// StatPal Soccer API V2 base URL (csak v2)
   static const String _statpalBaseUrl = 'https://statpal.io/api/v2/soccer';
 
-  /// StatPal V2 bajnokság slug-ok a tabella és menetrend végpontokhoz
-  static const Map<String, String> statpalLeagueSlugs = {
-    'Premier League': 'england-premier-league',
-    'La Liga': 'spain-la-liga',
-    'Serie A': 'italy-serie-a',
-    'Bundesliga': 'germany-bundesliga',
-    'Ligue 1': 'france-ligue-1',
-    'NB I': 'hungary-nb-i',
-    'Bajnokok Ligája': 'uefa-champions-league',
+  /// StatPal V2 liga azonosítók a /leagues/{id}/... végpontokhoz
+  static const Map<String, String> statpalLeagueIds = {
+    'Premier League': '152',
+    'La Liga': '207',
+    'Serie A': '201',
+    'Bundesliga': '171',
+    'Ligue 1': '168',
+    'NB I': '3037',
+    'Bajnokok Ligája': '2892',
   };
 
-  /// Kompatibilitás a Tabella fül kulcslistájához
-  static Map<String, String> get statpalLeagueIds => statpalLeagueSlugs;
+  /// Régi név kompatibilitás
+  static Map<String, String> get statpalLeagueSlugs => statpalLeagueIds;
 
   static String formatDate(DateTime dt) {
     final y = dt.year.toString().padLeft(4, '0');
@@ -948,7 +949,8 @@ class SportsApiService {
     if (key.isEmpty) return 'Add meg a StatPal kulcsot az ellenőrzéshez.';
 
     try {
-      final uri = Uri.parse('$_statpalBaseUrl/livescores?access_key=$key');
+      // V2 hivatalos live endpoint
+      final uri = Uri.parse('$_statpalBaseUrl/matches/live?access_key=$key');
       final res = await http.get(uri).timeout(const Duration(seconds: 12));
       if (res.statusCode == 200) {
         final rem = res.headers['x-ratelimit-remaining'] ?? res.headers['ratelimit-remaining'];
@@ -996,9 +998,10 @@ class SportsApiService {
     final key = ApiConfig.activeKey;
     final collected = <String, MatchData>{};
 
+    // 1) Mai nap: V2 live scores
     if (isToday) {
       await ApiCache.recordNetworkRequest();
-      final liveUri = Uri.parse('$_statpalBaseUrl/livescores?access_key=$key');
+      final liveUri = Uri.parse('$_statpalBaseUrl/matches/live?access_key=$key');
       final liveRes = await http.get(liveUri).timeout(const Duration(seconds: 15));
       if (liveRes.statusCode == 200) {
         final decoded = jsonDecode(liveRes.body);
@@ -1010,20 +1013,23 @@ class SportsApiService {
       }
     }
 
-    if (!isToday || collected.isEmpty) {
-      for (final entry in statpalLeagueSlugs.entries) {
-        try {
-          await ApiCache.recordNetworkRequest();
-          final uri = Uri.parse('$_statpalBaseUrl/matches/${entry.value}?access_key=$key');
-          final res = await http.get(uri).timeout(const Duration(seconds: 12));
-          if (res.statusCode == 200) {
-            final decoded = jsonDecode(res.body);
-            for (final m in _extractMatchesFromStatPal(decoded, filterDate: dateStr, fallbackLeague: entry.key)) {
-              collected[m.id] = m;
-            }
+    // 2) Ligánkénti meccsek (V2) + dátumszűrés — mai napra is, ha a live üres / kiegészítés
+    for (final entry in statpalLeagueIds.entries) {
+      try {
+        await ApiCache.recordNetworkRequest();
+        final uri = Uri.parse('$_statpalBaseUrl/leagues/${entry.value}/matches?access_key=$key');
+        final res = await http.get(uri).timeout(const Duration(seconds: 12));
+        if (res.statusCode == 200) {
+          final decoded = jsonDecode(res.body);
+          for (final m in _extractMatchesFromStatPal(
+            decoded,
+            filterDate: dateStr,
+            fallbackLeague: entry.key,
+          )) {
+            collected[m.id] = m;
           }
-        } catch (_) {}
-      }
+        }
+      } catch (_) {}
     }
 
     final parsed = collected.values.toList();
@@ -1075,8 +1081,8 @@ class SportsApiService {
     bool forceRefresh = false,
   }) async {
     final now = DateTime.now();
-    final slug = statpalLeagueSlugs[leagueName] ?? 'england-premier-league';
-    final cacheKey = 'sp_standings_${slug}_$venueFilter';
+    final leagueId = statpalLeagueIds[leagueName] ?? '152';
+    final cacheKey = 'sp_standings_${leagueId}_$venueFilter';
 
     if (!forceRefresh) {
       final cached = await ApiCache.get(cacheKey, customTtlMinutes: 15);
@@ -1094,8 +1100,12 @@ class SportsApiService {
     }
 
     await ApiCache.recordNetworkRequest();
-    final uri = Uri.parse('$_statpalBaseUrl/standings/$slug?access_key=${ApiConfig.activeKey}');
+    // V2: /leagues/{id}/standings
+    final uri = Uri.parse(
+      '$_statpalBaseUrl/leagues/$leagueId/standings?access_key=${ApiConfig.activeKey}',
+    );
     final res = await http.get(uri).timeout(const Duration(seconds: 15));
+
     if (res.statusCode != 200) {
       throw Exception('HTTP ${res.statusCode}');
     }
@@ -1162,7 +1172,12 @@ class SportsApiService {
     final out = <MatchData>[];
     if (decoded is! Map<String, dynamic>) return out;
 
-    final root = decoded['livescores'] ?? decoded['fixtures'] ?? decoded['data'] ?? decoded;
+    final root = decoded['live_matches'] ??
+        decoded['livescores'] ??
+        decoded['livescore'] ??
+        decoded['fixtures'] ??
+        decoded['data'] ??
+        decoded;
     if (root is Map<String, dynamic> && root['league'] != null) {
       final leaguesRaw = root['league'] is List ? root['league'] as List : [root['league']];
       for (final lg in leaguesRaw) {
@@ -1233,7 +1248,7 @@ class SportsApiService {
     String? countryOverride,
     String? leagueOverride,
   }) {
-    final id = (m['id'] ?? m['static_id'] ?? UniqueKey().toString()).toString();
+    final id = (m['id'] ?? m['main_id'] ?? m['static_id'] ?? m['alternate_id'] ?? UniqueKey().toString()).toString();
     final country = countryOverride ?? (m['country'] ?? 'Nemzetközi').toString();
     final league = leagueOverride ?? (m['league_name'] ?? m['league'] ?? 'Bajnokság').toString();
 
