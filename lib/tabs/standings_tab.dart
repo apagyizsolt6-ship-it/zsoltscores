@@ -9,6 +9,7 @@ class TeamProfileScreen extends StatefulWidget {
   final String? logoUrl;
   final Color accentColor;
   final List<String> form;
+  final StandingRow? standingRow;
   final List<MatchData> relatedMatches;
   final VoidCallback onChanged;
 
@@ -18,6 +19,7 @@ class TeamProfileScreen extends StatefulWidget {
     this.logoUrl,
     required this.accentColor,
     this.form = const [],
+    this.standingRow,
     this.relatedMatches = const [],
     required this.onChanged,
   });
@@ -61,6 +63,26 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
     );
   }
 
+  Widget _statTile(AppPalette p, String label, String value, Color accent) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 8),
+        decoration: BoxDecoration(
+          color: p.scaffoldBg.withAlpha(210),
+          borderRadius: BorderRadius.circular(11),
+          border: Border.all(color: p.borderSubtle),
+        ),
+        child: Column(
+          children: [
+            Text(value, style: TextStyle(fontWeight: FontWeight.w900, color: accent, fontSize: 13.5)),
+            const SizedBox(height: 2),
+            Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10, color: p.textMuted)),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = AppThemeController.instance.palette;
@@ -69,6 +91,17 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
     final wCount = effectiveForm.where((c) => c == 'GY').length;
     final dCount = effectiveForm.where((c) => c == 'D').length;
     final lCount = effectiveForm.where((c) => c == 'V').length;
+
+    final row = widget.standingRow;
+    final played = (row != null && row.played > 0) ? row.played : 0;
+    final gfAvg = played > 0 ? (row!.gf / played).toStringAsFixed(1) : '-';
+    final gaAvg = played > 0 ? (row!.ga / played).toStringAsFixed(1) : '-';
+    final gdText = row != null ? (row.gd > 0 ? '+${row.gd}' : '${row.gd}') : '-';
+    final cleanSheetApprox = widget.relatedMatches.where((m) {
+      if (!m.isFinished) return false;
+      final isHome = m.homeTeam.toLowerCase().contains(widget.teamName.toLowerCase());
+      return isHome ? m.awayScore == 0 : m.homeScore == 0;
+    }).length;
 
     return Scaffold(
       appBar: AppBar(
@@ -107,8 +140,10 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
                       Text(widget.teamName, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: p.textPrimary)),
                       const SizedBox(height: 4),
                       Text(
-                        _isFav ? '★ Kedvenc csapat (kiemelt a meccseknél)' : 'Koppints a csillagra a kedvenceléshez',
-                        style: TextStyle(fontSize: 12, color: _isFav ? p.goldAccent : p.textSecondary),
+                        row != null
+                            ? '${row.pos}. hely • ${row.points} pont • GK: $gdText'
+                            : (_isFav ? '★ Kedvenc csapat (kiemelt a meccseknél)' : 'Koppints a csillagra a kedvenceléshez'),
+                        style: TextStyle(fontSize: 12, color: _isFav ? p.goldAccent : p.textSecondary, fontWeight: FontWeight.w600),
                       ),
                     ],
                   ),
@@ -139,53 +174,21 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 7),
-                        decoration: BoxDecoration(
-                          color: p.scaffoldBg.withAlpha(200),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Column(
-                          children: [
-                            Text('$wCount', style: TextStyle(fontWeight: FontWeight.w900, color: p.primaryAccent, fontSize: 13)),
-                            Text('Győzelem', style: TextStyle(fontSize: 10, color: p.textMuted)),
-                          ],
-                        ),
-                      ),
-                    ),
+                    _statTile(p, 'Győzelem', '$wCount', p.primaryAccent),
                     const SizedBox(width: 8),
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 7),
-                        decoration: BoxDecoration(
-                          color: p.scaffoldBg.withAlpha(200),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Column(
-                          children: [
-                            Text('$dCount', style: TextStyle(fontWeight: FontWeight.w900, color: p.goldAccent, fontSize: 13)),
-                            Text('Döntetlen', style: TextStyle(fontSize: 10, color: p.textMuted)),
-                          ],
-                        ),
-                      ),
-                    ),
+                    _statTile(p, 'Döntetlen', '$dCount', p.goldAccent),
                     const SizedBox(width: 8),
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 7),
-                        decoration: BoxDecoration(
-                          color: p.scaffoldBg.withAlpha(200),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Column(
-                          children: [
-                            Text('$lCount', style: TextStyle(fontWeight: FontWeight.w900, color: p.liveRed, fontSize: 13)),
-                            Text('Vereség', style: TextStyle(fontSize: 10, color: p.textMuted)),
-                          ],
-                        ),
-                      ),
-                    ),
+                    _statTile(p, 'Vereség', '$lCount', p.liveRed),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    _statTile(p, 'Rúgott/meccs', gfAvg, p.secondaryAccent),
+                    const SizedBox(width: 8),
+                    _statTile(p, 'Kapott/meccs', gaAvg, p.textSecondary),
+                    const SizedBox(width: 8),
+                    _statTile(p, 'Hadosztály/CS', '$cleanSheetApprox', p.primaryAccent),
                   ],
                 ),
               ],
@@ -300,6 +303,21 @@ class _StandingsTabState extends State<StandingsTab> {
     return Colors.transparent;
   }
 
+  Widget _zoneLegendItem(Color color, String label, AppPalette p) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3)),
+        ),
+        const SizedBox(width: 4),
+        Text(label, style: TextStyle(fontSize: 10.5, color: p.textSecondary, fontWeight: FontWeight.w600)),
+      ],
+    );
+  }
+
   Widget _posBadge(int pos, AppPalette p) {
     if (pos == 1) {
       return Container(
@@ -372,6 +390,7 @@ class _StandingsTabState extends State<StandingsTab> {
           logoUrl: row.logo,
           accentColor: row.color,
           form: row.form,
+          standingRow: row,
           relatedMatches: related,
           onChanged: () {
             setState(() {});
@@ -557,6 +576,18 @@ class _StandingsTabState extends State<StandingsTab> {
             ),
           ),
           if (!showScorers) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 2),
+              child: Wrap(
+                spacing: 12,
+                runSpacing: 4,
+                children: [
+                  _zoneLegendItem(p.primaryAccent, 'BL / Top', p),
+                  _zoneLegendItem(p.secondaryAccent, 'EL / EKL', p),
+                  _zoneLegendItem(p.liveRed, 'Kieső zóna', p),
+                ],
+              ),
+            ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               child: Row(
