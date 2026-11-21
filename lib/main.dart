@@ -163,6 +163,11 @@ class _MainShellState extends State<MainShell> {
     _loadMatches(forceRefresh: false);
   }
 
+  void _selectDate(DateTime date) {
+    setState(() => _selectedDate = date);
+    _loadMatches(forceRefresh: false);
+  }
+
   void _jumpToToday() {
     setState(() => _selectedDate = DateTime.now());
     _loadMatches(forceRefresh: false);
@@ -221,6 +226,7 @@ class _MainShellState extends State<MainShell> {
     int tempTtl = ApiCache.cacheMinutes;
     CollapseMode tempCollapseMode = DisplayPrefs.collapseMode;
     bool tempAutoLiveList = DisplayPrefs.autoLiveListRefresh;
+    bool tempFavTeamsOnly = LiveAlertService.favoriteTeamsOnly;
     bool tempAlertGoal = DisplayPrefs.alertOnGoal;
     bool tempAlertRed = DisplayPrefs.alertOnRedCard;
     bool tempAlertEnd = DisplayPrefs.alertOnFinish;
@@ -444,6 +450,17 @@ class _MainShellState extends State<MainShell> {
                       SwitchListTile(
                         dense: true,
                         contentPadding: EdgeInsets.zero,
+                        title: const Text('Csak kedvenc csapatok riasztása', style: TextStyle(fontSize: 12.5)),
+                        subtitle: Text(
+                          'Csillagozott meccsek nélkül, kizárólag a kedvenc csapatokra',
+                          style: TextStyle(fontSize: 10.5, color: p.textMuted),
+                        ),
+                        value: tempFavTeamsOnly,
+                        onChanged: (v) => setDialogState(() => tempFavTeamsOnly = v),
+                      ),
+                      SwitchListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
                         title: const Text('⚽ Gól értesítés', style: TextStyle(fontSize: 12.5)),
                         value: tempAlertGoal,
                         onChanged: (v) => setDialogState(() => tempAlertGoal = v),
@@ -625,6 +642,7 @@ class _MainShellState extends State<MainShell> {
                 TextButton(
                   onPressed: () async {
                     setDialogState(() => activeCtrl.clear());
+                    LiveAlertService.favoriteTeamsOnly = tempFavTeamsOnly;
                     await ApiConfig.save(
                       newProvider: tempProvider,
                       newHighlightlyKey: hlController.text,
@@ -650,6 +668,7 @@ class _MainShellState extends State<MainShell> {
               FilledButton(
                 style: FilledButton.styleFrom(backgroundColor: p.primaryAccent),
                 onPressed: () async {
+                  LiveAlertService.favoriteTeamsOnly = tempFavTeamsOnly;
                   await ApiConfig.save(
                     newProvider: tempProvider,
                     newHighlightlyKey: hlController.text,
@@ -697,6 +716,7 @@ class _MainShellState extends State<MainShell> {
         onToggleFavorite: _toggleFavorite,
         onTogglePinCompetition: _togglePinCompetition,
         onChangeDate: _changeDate,
+        onSelectDate: _selectDate,
         onJumpToday: _jumpToToday,
         onRefresh: () => _loadMatches(forceRefresh: true),
         onOpenSettings: _openApiSettingsDialog,
