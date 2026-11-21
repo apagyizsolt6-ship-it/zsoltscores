@@ -129,7 +129,7 @@ class _MainShellState extends State<MainShell> {
           _recentlyScoredIds.addAll(scoredNow);
         }
         _statusMessage = result.data.isEmpty
-            ? 'Erre a napra nincs elérhető meccs (${ApiConfig.providerName}).'
+            ? 'Erre a napra nincs elérhető meccs (StatPal V2).'
             : null;
       });
 
@@ -218,11 +218,8 @@ class _MainShellState extends State<MainShell> {
   }
 
   void _openApiSettingsDialog() async {
-    ApiProvider tempProvider = ApiConfig.provider;
-    final hlController = TextEditingController(text: ApiConfig.highlightlyKey);
     final spController = TextEditingController(text: ApiConfig.statpalKey);
     final favTeamsController = TextEditingController(text: DisplayPrefs.favoriteTeams.join(', '));
-    bool tempRapid = ApiConfig.useRapidApi;
     int tempTtl = ApiCache.cacheMinutes;
     CollapseMode tempCollapseMode = DisplayPrefs.collapseMode;
     bool tempAutoLiveList = DisplayPrefs.autoLiveListRefresh;
@@ -238,8 +235,6 @@ class _MainShellState extends State<MainShell> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) {
           final p = AppThemeController.instance.palette;
-          final isSp = tempProvider == ApiProvider.statpal;
-          final activeCtrl = isSp ? spController : hlController;
           final currentStyle = AppThemeController.instance.style;
 
           return AlertDialog(
@@ -315,49 +310,17 @@ class _MainShellState extends State<MainShell> {
                   ),
                   _settingsSectionCard(
                     p: p,
-                    title: 'Aktív adatforrás',
+                    title: 'StatPal V2 API beállítások',
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: ChoiceChip(
-                              label: const Center(child: Text('Highlightly', style: TextStyle(fontSize: 12))),
-                              selected: !isSp,
-                              selectedColor: p.primaryAccent,
-                              backgroundColor: p.scaffoldBg,
-                              labelStyle: TextStyle(
-                                color: !isSp ? Colors.white : p.textPrimary,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              onSelected: (_) => setDialogState(() => tempProvider = ApiProvider.highlightly),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: ChoiceChip(
-                              label: const Center(child: Text('StatPal V2', style: TextStyle(fontSize: 12))),
-                              selected: isSp,
-                              selectedColor: p.secondaryAccent,
-                              backgroundColor: p.scaffoldBg,
-                              labelStyle: TextStyle(
-                                color: isSp ? Colors.white : p.textPrimary,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              onSelected: (_) => setDialogState(() => tempProvider = ApiProvider.statpal),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
                       Text(
-                        isSp ? 'StatPal.io hozzáférési kulcs (UUID):' : 'Highlightly API kulcs:',
+                        'StatPal.io hozzáférési kulcs (UUID):',
                         style: TextStyle(fontSize: 12, color: p.textSecondary),
                       ),
                       const SizedBox(height: 6),
                       TextField(
-                        controller: activeCtrl,
+                        controller: spController,
                         decoration: InputDecoration(
-                          hintText: isSp ? 'Illeszd be a StatPal kulcsot...' : 'Illeszd be a Highlightly kulcsot...',
+                          hintText: 'Illeszd be a StatPal kulcsot...',
                           filled: true,
                           fillColor: p.scaffoldBg,
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -366,71 +329,59 @@ class _MainShellState extends State<MainShell> {
                             onPressed: () async {
                               final data = await Clipboard.getData(Clipboard.kTextPlain);
                               if (data?.text != null && data!.text!.trim().isNotEmpty) {
-                                setDialogState(() => activeCtrl.text = data.text!.trim());
+                                setDialogState(() => spController.text = data.text!.trim());
                               }
                             },
                           ),
                         ),
                       ),
-                      const SizedBox(height: 6),
-                      if (!isSp)
-                        SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text('RapidAPI végpont használata', style: TextStyle(fontSize: 13)),
-                          subtitle: Text(
-                            tempRapid ? 'football-highlights-api.p.rapidapi.com' : 'soccer.highlightly.net',
-                            style: TextStyle(fontSize: 11, color: p.textMuted),
-                          ),
-                          value: tempRapid,
-                          onChanged: (val) => setDialogState(() => tempRapid = val),
-                        )
-                      else
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: p.secondaryAccent.withAlpha(25),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: p.secondaryAccent.withAlpha(90)),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'statpal.io/api/v2/soccer • 15 mp-es élő frissítés',
-                                style: TextStyle(fontSize: 11, color: p.textSecondary),
-                              ),
-                              const SizedBox(height: 6),
-                              SizedBox(
-                                width: double.infinity,
-                                child: OutlinedButton.icon(
-                                  onPressed: checkingUsage
-                                      ? null
-                                      : () async {
-                                          setDialogState(() => checkingUsage = true);
-                                          final info = await SportsApiService.fetchStatPalDailyUsage(spController.text);
-                                          setDialogState(() {
-                                            usageInfo = info;
-                                            checkingUsage = false;
-                                          });
-                                        },
-                                  icon: Icon(Icons.analytics_outlined, size: 16, color: p.primaryAccent),
-                                  label: Text(
-                                    checkingUsage ? 'Lekérdezés...' : 'Mai StatPal keret ellenőrzése (ingyenes)',
-                                    style: const TextStyle(fontSize: 11),
-                                  ),
-                                ),
-                              ),
-                              if (usageInfo != null) ...[
-                                const SizedBox(height: 4),
-                                Text(
-                                  usageInfo!,
-                                  style: TextStyle(fontSize: 11, color: p.primaryAccent, fontWeight: FontWeight.bold),
-                                ),
-                              ],
-                            ],
-                          ),
+                      const SizedBox(height: 8),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: p.secondaryAccent.withAlpha(25),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: p.secondaryAccent.withAlpha(90)),
                         ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'statpal.io/api/v2/soccer • 15 mp-es élő frissítés',
+                              style: TextStyle(fontSize: 11, color: p.textSecondary),
+                            ),
+                            const SizedBox(height: 6),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: checkingUsage
+                                    ? null
+                                    : () async {
+                                        setDialogState(() => checkingUsage = true);
+                                        final info = await SportsApiService.fetchStatPalDailyUsage(spController.text);
+                                        setDialogState(() {
+                                          usageInfo = info;
+                                          checkingUsage = false;
+                                        });
+                                      },
+                                icon: Icon(Icons.analytics_outlined, size: 16, color: p.primaryAccent),
+                                label: Text(
+                                  checkingUsage ? 'Lekérdezés...' : 'Mai StatPal keret ellenőrzése (ingyenes)',
+                                  style: const TextStyle(fontSize: 11),
+                                ),
+                              ),
+                            ),
+                            if (usageInfo != null) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                usageInfo!,
+                                style: TextStyle(fontSize: 11, color: p.primaryAccent, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                   _settingsSectionCard(
@@ -638,16 +589,16 @@ class _MainShellState extends State<MainShell> {
               ),
             ),
             actions: [
-              if (activeCtrl.text.trim().isNotEmpty)
+              if (spController.text.trim().isNotEmpty)
                 TextButton(
                   onPressed: () async {
-                    setDialogState(() => activeCtrl.clear());
+                    setDialogState(() => spController.clear());
                     LiveAlertService.favoriteTeamsOnly = tempFavTeamsOnly;
                     await ApiConfig.save(
-                      newProvider: tempProvider,
-                      newHighlightlyKey: hlController.text,
-                      rapid: tempRapid,
-                      newStatpalKey: spController.text,
+                      newProvider: ApiProvider.statpal,
+                      newHighlightlyKey: '',
+                      rapid: false,
+                      newStatpalKey: '',
                     );
                     await DisplayPrefs.saveDisplayAndAlerts(
                       newCollapseMode: tempCollapseMode,
@@ -670,9 +621,9 @@ class _MainShellState extends State<MainShell> {
                 onPressed: () async {
                   LiveAlertService.favoriteTeamsOnly = tempFavTeamsOnly;
                   await ApiConfig.save(
-                    newProvider: tempProvider,
-                    newHighlightlyKey: hlController.text,
-                    rapid: tempRapid,
+                    newProvider: ApiProvider.statpal,
+                    newHighlightlyKey: '',
+                    rapid: false,
                     newStatpalKey: spController.text,
                   );
                   await ApiCache.setCacheMinutes(tempTtl);
