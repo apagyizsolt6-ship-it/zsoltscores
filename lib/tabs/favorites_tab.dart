@@ -24,7 +24,7 @@ class FavoritesTab extends StatelessWidget {
         decoration: BoxDecoration(
           color: p.cardElevated,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: accent.withAlpha(85)),
+          border: Border.all(color: accent.withAlpha(95)),
         ),
         child: Column(
           children: [
@@ -37,7 +37,7 @@ class FavoritesTab extends StatelessWidget {
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 10.5, color: Colors.white60, fontWeight: FontWeight.w600),
+              style: TextStyle(fontSize: 10.5, color: p.textMuted, fontWeight: FontWeight.w600),
             ),
           ],
         ),
@@ -72,10 +72,10 @@ class FavoritesTab extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Text(
                         'Kedvenc Meccsek & Csapatok ⭐',
-                        style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
+                        style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold, color: p.textPrimary),
                       ),
                     ),
                     if (liveFavCount > 0)
@@ -97,7 +97,7 @@ class FavoritesTab extends StatelessWidget {
                   DisplayPrefs.favoriteTeams.isEmpty
                       ? 'Csillagozott meccsek értesítésekkel'
                       : 'Kiemelt csapatok: ${DisplayPrefs.favoriteTeams.join(', ')}',
-                  style: const TextStyle(fontSize: 12, color: Colors.white70),
+                  style: TextStyle(fontSize: 12, color: p.textSecondary),
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
@@ -119,13 +119,13 @@ class FavoritesTab extends StatelessWidget {
           const SizedBox(height: 8),
           Expanded(
             child: favMatches.isEmpty
-                ? const Center(
+                ? Center(
                     child: Padding(
-                      padding: EdgeInsets.all(24),
+                      padding: const EdgeInsets.all(24),
                       child: Text(
                         'Még nincs kedvenc meccsed erre a napra.\nKoppints a csillag ikonra bármelyik meccsen!',
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white60, height: 1.5),
+                        style: TextStyle(color: p.textMuted, height: 1.5),
                       ),
                     ),
                   )
