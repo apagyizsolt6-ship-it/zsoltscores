@@ -462,14 +462,28 @@ class _MainShellState extends State<MainShell> {
                         value: tempAlertEnd,
                         onChanged: (v) => setDialogState(() => tempAlertEnd = v),
                       ),
-                      const SizedBox(height: 4),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: () => LiveAlertService.showTestAlert(context),
-                          icon: Icon(Icons.notifications_active_outlined, size: 16, color: p.goldAccent),
-                          label: const Text('Próbaértesítés küldése', style: TextStyle(fontSize: 12)),
-                        ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () => LiveAlertService.showTestAlert(context),
+                              icon: Icon(Icons.notifications_active_outlined, size: 15, color: p.goldAccent),
+                              label: const Text('Próba', style: TextStyle(fontSize: 11.5)),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () {
+                                Navigator.pop(ctx);
+                                LiveAlertService.openHistoryDialog(context);
+                              },
+                              icon: Icon(Icons.history, size: 15, color: p.secondaryAccent),
+                              label: Text('Napló (${LiveAlertService.history.length})', style: const TextStyle(fontSize: 11.5)),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
