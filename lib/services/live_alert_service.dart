@@ -26,6 +26,7 @@ class LiveAlertEntry {
 class LiveAlertService {
   LiveAlertService._();
 
+  static bool favoriteTeamsOnly = false;
   static final Map<String, int> _lastScores = {};
   static final Map<String, bool> _lastFinishedState = {};
   static final Set<String> _seenRedEventKeys = {};
@@ -152,9 +153,11 @@ class LiveAlertService {
     final now = DateTime.now();
 
     for (final m in matches) {
-      final isTracked = favoriteMatchIds.contains(m.id) ||
-          DisplayPrefs.isFavoriteTeam(m.homeTeam) ||
-          DisplayPrefs.isFavoriteTeam(m.awayTeam);
+      final isFavTeamMatch =
+          DisplayPrefs.isFavoriteTeam(m.homeTeam) || DisplayPrefs.isFavoriteTeam(m.awayTeam);
+      final isTracked = favoriteTeamsOnly
+          ? isFavTeamMatch
+          : (favoriteMatchIds.contains(m.id) || isFavTeamMatch);
 
       final scoreKey = m.homeScore * 100 + m.awayScore;
       final prevScore = _lastScores[m.id];
