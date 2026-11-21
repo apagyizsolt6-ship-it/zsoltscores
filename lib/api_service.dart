@@ -599,9 +599,9 @@ class MatchData {
 
   factory MatchData.fromJson(Map<String, dynamic> json) => MatchData(
         id: json['id']?.toString() ?? '',
-        country: json['country']?.toString() ?? 'Nemzetközi',
+        country: SportsApiService.localizeCountry(json['country']?.toString() ?? 'Nemzetközi'),
         countryFlagUrl: json['countryFlagUrl']?.toString(),
-        league: json['league']?.toString() ?? 'Bajnokság',
+        league: SportsApiService.localizeLeague(json['league']?.toString() ?? 'Bajnokság'),
         homeTeam: json['homeTeam']?.toString() ?? 'Hazai',
         awayTeam: json['awayTeam']?.toString() ?? 'Vendég',
         homeLogo: json['homeLogo']?.toString(),
@@ -916,6 +916,221 @@ class SportsApiService {
   /// Régi név kompatibilitás
   static Map<String, String> get statpalLeagueSlugs => statpalLeagueIds;
 
+  /// Országnevek angol → magyar
+  static const Map<String, String> _countryHu = {
+    'england': 'Anglia',
+    'spain': 'Spanyolország',
+    'italy': 'Olaszország',
+    'germany': 'Németország',
+    'france': 'Franciaország',
+    'hungary': 'Magyarország',
+    'portugal': 'Portugália',
+    'netherlands': 'Hollandia',
+    'holland': 'Hollandia',
+    'belgium': 'Belgium',
+    'scotland': 'Skócia',
+    'turkey': 'Törökország',
+    'greece': 'Görögország',
+    'austria': 'Ausztria',
+    'switzerland': 'Svájc',
+    'poland': 'Lengyelország',
+    'czech': 'Csehország',
+    'czechia': 'Csehország',
+    'slovakia': 'Szlovákia',
+    'romania': 'Románia',
+    'serbia': 'Szerbia',
+    'croatia': 'Horvátország',
+    'slovenia': 'Szlovénia',
+    'bulgaria': 'Bulgária',
+    'ukraine': 'Ukrajna',
+    'russia': 'Oroszország',
+    'denmark': 'Dánia',
+    'sweden': 'Svédország',
+    'norway': 'Norvégia',
+    'finland': 'Finnország',
+    'ireland': 'Írország',
+    'wales': 'Wales',
+    'northern ireland': 'Észak-Írország',
+    'bosnia': 'Bosznia-Hercegovina',
+    'bosnia and herzegovina': 'Bosznia-Hercegovina',
+    'albania': 'Albánia',
+    'north macedonia': 'Észak-Macedónia',
+    'macedonia': 'Észak-Macedónia',
+    'montenegro': 'Montenegró',
+    'kosovo': 'Koszovó',
+    'cyprus': 'Ciprus',
+    'malta': 'Málta',
+    'iceland': 'Izland',
+    'israel': 'Izrael',
+    'brazil': 'Brazília',
+    'argentina': 'Argentína',
+    'uruguay': 'Uruguay',
+    'chile': 'Chile',
+    'colombia': 'Kolumbia',
+    'mexico': 'Mexikó',
+    'usa': 'USA',
+    'united states': 'USA',
+    'canada': 'Kanada',
+    'japan': 'Japán',
+    'south korea': 'Dél-Korea',
+    'korea': 'Dél-Korea',
+    'china': 'Kína',
+    'australia': 'Ausztrália',
+    'saudi arabia': 'Szaúd-Arábia',
+    'qatar': 'Katar',
+    'uae': 'Egyesült Arab Emírségek',
+    'egypt': 'Egyiptom',
+    'morocco': 'Marokkó',
+    'tunisia': 'Tunézia',
+    'algeria': 'Algéria',
+    'nigeria': 'Nigéria',
+    'south africa': 'Dél-Afrika',
+    'ghana': 'Ghána',
+    'cameroon': 'Kamerun',
+    'senegal': 'Szenegál',
+    'ivory coast': 'Elefántcsontpart',
+    'africa': 'Afrika',
+    'asia': 'Ázsia',
+    'europe': 'Európa',
+    'world': 'Világ',
+    'international': 'Nemzetközi',
+    'concacaf': 'CONCACAF',
+    'conmebol': 'CONMEBOL',
+    'uefa': 'UEFA',
+    'afc': 'Ázsia',
+    'caf': 'Afrika',
+  };
+
+  /// Gyakori bajnokságnevek angol → magyar
+  static const Map<String, String> _leagueHu = {
+    'premier league': 'Premier League',
+    'la liga': 'La Liga',
+    'primera division': 'La Liga',
+    'serie a': 'Serie A',
+    'bundesliga': 'Bundesliga',
+    'ligue 1': 'Ligue 1',
+    'eredivisie': 'Eredivisie',
+    'primeira liga': 'Primeira Liga',
+    'liga portugal': 'Primeira Liga',
+    'super lig': 'Süper Lig',
+    'süper lig': 'Süper Lig',
+    'championship': 'Championship',
+    'league one': 'League One',
+    'league two': 'League Two',
+    'fa cup': 'FA-kupa',
+    'efl cup': 'EFL-kupa',
+    'carabao cup': 'EFL-kupa',
+    'community shield': 'Community Shield',
+    'copa del rey': 'Király-kupa',
+    'supercopa': 'Spanyol Szuperkupa',
+    'coppa italia': 'Olasz Kupa',
+    'dfb pokal': 'Német Kupa',
+    'coupe de france': 'Francia Kupa',
+    'taca de portugal': 'Portugál Kupa',
+    'nb i': 'NB I',
+    'nb 1': 'NB I',
+    'otp bank liga': 'NB I',
+    'magyar kupa': 'Magyar Kupa',
+    'uefa champions league': 'Bajnokok Ligája',
+    'champions league': 'Bajnokok Ligája',
+    'uefa europa league': 'Európa-liga',
+    'europa league': 'Európa-liga',
+    'uefa europa conference league': 'Konferencia-liga',
+    'conference league': 'Konferencia-liga',
+    'uefa super cup': 'UEFA-szuperkupa',
+    'fifa club world cup': 'Klubvilágbajnokság',
+    'club world cup': 'Klubvilágbajnokság',
+    'world cup': 'Világbajnokság',
+    'euro': 'Európa-bajnokság',
+    'european championship': 'Európa-bajnokság',
+    'nations league': 'Nemzetek Ligája',
+    'uefa nations league': 'Nemzetek Ligája',
+    'copa america': 'Copa América',
+    'africa cup of nations': 'Afrikai Nemzetek Kupája',
+    'afcon': 'Afrikai Nemzetek Kupája',
+    'asian cup': 'Ázsia-kupa',
+    'gold cup': 'CONCACAF Gold Cup',
+    'friendlies': 'Barátságos',
+    'friendly': 'Barátságos',
+    'international friendly': 'Barátságos',
+    'women': 'Női',
+    'u21': 'U21',
+    'u20': 'U20',
+    'u19': 'U19',
+    'u17': 'U17',
+  };
+
+  /// Országnév magyarítása
+  static String localizeCountry(String raw) {
+    final t = raw.trim();
+    if (t.isEmpty) return 'Nemzetközi';
+    final key = t.toLowerCase();
+    if (_countryHu.containsKey(key)) return _countryHu[key]!;
+    // "England - Premier League" jellegű
+    final dash = key.split(RegExp(r'\s*[-–:]\s*')).first.trim();
+    if (_countryHu.containsKey(dash)) return _countryHu[dash]!;
+    // Már magyar / ismert
+    if (t.contains(RegExp(r'[áéíóöőúüűÁÉÍÓÖŐÚÜŰ]'))) return t;
+    // Title case megőrzése ha nincs fordítás
+    return t
+        .split(' ')
+        .map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1).toLowerCase()}')
+        .join(' ');
+  }
+
+  /// Bajnokságnév magyarítása + "Country: League" szétválasztás
+  static String localizeLeague(String raw, {String? countryHint}) {
+    var t = raw.trim();
+    if (t.isEmpty) return 'Bajnokság';
+
+    // "England: Premier League" / "Africa: Africa Cup Of Nations"
+    if (t.contains(':')) {
+      final parts = t.split(':');
+      if (parts.length >= 2) {
+        final after = parts.sublist(1).join(':').trim();
+        if (after.isNotEmpty) t = after;
+      }
+    }
+
+    final key = t.toLowerCase();
+    if (_leagueHu.containsKey(key)) return _leagueHu[key]!;
+
+    // Részleges egyezés (pl. "Premier League - Round 12")
+    for (final e in _leagueHu.entries) {
+      if (key.contains(e.key)) {
+        return e.value;
+      }
+    }
+
+    // Ha a liga neve megegyezik az ország hinttel, ne ismételjük
+    if (countryHint != null && t.toLowerCase() == countryHint.toLowerCase()) {
+      return 'Bajnokság';
+    }
+
+    return t;
+  }
+
+  /// Ország + liga kinyerése egy API liga objektumból / névből
+  static ({String country, String league}) localizeCompetition({
+    String? countryRaw,
+    String? leagueRaw,
+    String? fallbackLeague,
+  }) {
+    var country = (countryRaw ?? '').trim();
+    var league = (leagueRaw ?? fallbackLeague ?? '').trim();
+
+    // Ha a liga "Country: League" formátumú és nincs külön country
+    if (country.isEmpty && league.contains(':')) {
+      final parts = league.split(':');
+      country = parts.first.trim();
+      league = parts.sublist(1).join(':').trim();
+    }
+
+    final huCountry = localizeCountry(country.isEmpty ? 'international' : country);
+    final huLeague = localizeLeague(league, countryHint: huCountry);
+    return (country: huCountry, league: huLeague);
+  }
+
   static String formatDate(DateTime dt) {
     final y = dt.year.toString().padLeft(4, '0');
     final m = dt.month.toString().padLeft(2, '0');
@@ -1183,8 +1398,11 @@ class SportsApiService {
       for (final lg in leaguesRaw) {
         if (lg is! Map) continue;
         final lgMap = Map<String, dynamic>.from(lg);
-        final country = (lgMap['country'] ?? 'Nemzetközi').toString();
-        final leagueName = (lgMap['name'] ?? fallbackLeague ?? 'Bajnokság').toString();
+        final localized = localizeCompetition(
+          countryRaw: lgMap['country']?.toString(),
+          leagueRaw: (lgMap['name'] ?? fallbackLeague)?.toString(),
+          fallbackLeague: fallbackLeague,
+        );
         final matchesRaw = lgMap['match'] is List
             ? lgMap['match'] as List
             : (lgMap['match'] != null ? [lgMap['match']] : const []);
@@ -1197,7 +1415,11 @@ class SportsApiService {
                 continue;
               }
             }
-            out.add(_parseStatPalMatch(mm, countryOverride: country, leagueOverride: leagueName));
+            out.add(_parseStatPalMatch(
+              mm,
+              countryOverride: localized.country,
+              leagueOverride: localized.league,
+            ));
           }
         }
       }
@@ -1249,8 +1471,12 @@ class SportsApiService {
     String? leagueOverride,
   }) {
     final id = (m['id'] ?? m['main_id'] ?? m['static_id'] ?? m['alternate_id'] ?? UniqueKey().toString()).toString();
-    final country = countryOverride ?? (m['country'] ?? 'Nemzetközi').toString();
-    final league = leagueOverride ?? (m['league_name'] ?? m['league'] ?? 'Bajnokság').toString();
+    final localized = localizeCompetition(
+      countryRaw: countryOverride ?? m['country']?.toString(),
+      leagueRaw: leagueOverride ?? m['league_name']?.toString() ?? m['league']?.toString(),
+    );
+    final country = localized.country;
+    final league = localized.league;
 
     final homeObj = m['home'] is Map ? Map<String, dynamic>.from(m['home'] as Map) : <String, dynamic>{};
     final awayObj = m['away'] is Map ? Map<String, dynamic>.from(m['away'] as Map) : <String, dynamic>{};
