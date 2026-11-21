@@ -1208,8 +1208,8 @@ class SportsApiService {
     return false;
   }
 
-  static List> _extractStandingsRows(dynamic decoded) {
-    final rows = >[];
+  static List<Map<String, dynamic>> _extractStandingsRows(dynamic decoded) {
+    final rows = <Map<String, dynamic>>[];
     if (decoded is! Map<String, dynamic>) return rows;
     final root = decoded['standings'] ?? decoded['data'] ?? decoded;
     if (root is Map<String, dynamic> && root['league'] != null) {
