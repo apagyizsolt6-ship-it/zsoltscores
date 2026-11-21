@@ -203,7 +203,7 @@ class _MatchesTabState extends State<MatchesTab> {
             ? 'Gyorsítótár ($provName) • $countText • $updClock'
             : '$provName Élő$liveAutoTag • $countText • $updClock');
     final sourceColor = !widget.isLiveApiData
-        ? Colors.amberAccent
+        ? p.goldAccent
         : (widget.loadedFromCache ? p.secondaryAccent : p.primaryAccent);
 
     final quickChips = <String>{
@@ -224,8 +224,12 @@ class _MatchesTabState extends State<MatchesTab> {
               ),
               borderRadius: const BorderRadius.vertical(bottom: Radius.circular(22)),
               border: Border(bottom: BorderSide(color: p.borderSubtle)),
-              boxShadow: const [
-                BoxShadow(color: Colors.black38, blurRadius: 8, offset: Offset(0, 3)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withAlpha(p.isLight ? 18 : 95),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
               ],
             ),
             child: Column(
@@ -238,16 +242,21 @@ class _MatchesTabState extends State<MatchesTab> {
                         gradient: LinearGradient(colors: [p.primaryAccent, p.secondaryAccent]),
                         borderRadius: BorderRadius.circular(11),
                       ),
-                      child: const Icon(Icons.sports_soccer, color: Color(0xFF0B132B), size: 20),
+                      child: const Icon(Icons.sports_soccer, color: Colors.white, size: 20),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          Text(
                             'zsoltscores',
-                            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -0.3),
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                              color: p.textPrimary,
+                              letterSpacing: -0.3,
+                            ),
                           ),
                           Text(
                             sourceSubtitle,
@@ -280,17 +289,17 @@ class _MatchesTabState extends State<MatchesTab> {
                           padding: const EdgeInsets.all(7),
                           margin: const EdgeInsets.only(right: 4),
                           decoration: BoxDecoration(
-                            color: p.scaffoldBg.withAlpha(190),
+                            color: p.scaffoldBg.withAlpha(220),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
                               color: DisplayPrefs.autoLiveListRefresh
-                                  ? p.primaryAccent.withAlpha(130)
-                                  : Colors.white24,
+                                  ? p.primaryAccent.withAlpha(140)
+                                  : p.borderSubtle,
                             ),
                           ),
                           child: Icon(
                             Icons.sensors,
-                            color: DisplayPrefs.autoLiveListRefresh ? p.primaryAccent : Colors.white38,
+                            color: DisplayPrefs.autoLiveListRefresh ? p.primaryAccent : p.textMuted,
                             size: 18,
                           ),
                         ),
@@ -305,7 +314,7 @@ class _MatchesTabState extends State<MatchesTab> {
                           padding: const EdgeInsets.all(7),
                           margin: const EdgeInsets.only(right: 4),
                           decoration: BoxDecoration(
-                            color: p.scaffoldBg.withAlpha(190),
+                            color: p.scaffoldBg.withAlpha(220),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(color: p.secondaryAccent.withAlpha(110)),
                           ),
@@ -323,10 +332,10 @@ class _MatchesTabState extends State<MatchesTab> {
                         duration: const Duration(milliseconds: 180),
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
-                          color: quickFilter == 'live' ? p.liveRed : p.liveRed.withAlpha(38),
+                          color: quickFilter == 'live' ? p.liveRed : p.liveRed.withAlpha(32),
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
-                            color: quickFilter == 'live' ? const Color(0xFFFF5252) : p.liveRed.withAlpha(170),
+                            color: quickFilter == 'live' ? p.liveRed : p.liveRed.withAlpha(160),
                           ),
                         ),
                         child: Row(
@@ -343,8 +352,8 @@ class _MatchesTabState extends State<MatchesTab> {
                             const SizedBox(width: 5),
                             Text(
                               'ÉLŐ ($liveCount)',
-                              style: const TextStyle(
-                                color: Colors.white,
+                              style: TextStyle(
+                                color: quickFilter == 'live' ? Colors.white : p.liveRed,
                                 fontWeight: FontWeight.w800,
                                 fontSize: 11,
                               ),
@@ -357,14 +366,14 @@ class _MatchesTabState extends State<MatchesTab> {
                       IconButton(
                         visualDensity: VisualDensity.compact,
                         onPressed: widget.onRefresh,
-                        icon: const Icon(Icons.refresh, color: Colors.white70, size: 21),
+                        icon: Icon(Icons.refresh, color: p.textSecondary, size: 21),
                       ),
                     IconButton(
                       visualDensity: VisualDensity.compact,
                       onPressed: widget.onOpenSettings,
                       icon: Icon(
                         Icons.settings,
-                        color: ApiConfig.hasValidKey ? p.primaryAccent : Colors.amberAccent,
+                        color: ApiConfig.hasValidKey ? p.primaryAccent : p.goldAccent,
                         size: 21,
                       ),
                     ),
@@ -376,9 +385,9 @@ class _MatchesTabState extends State<MatchesTab> {
                     Container(
                       height: 38,
                       decoration: BoxDecoration(
-                        color: p.scaffoldBg.withAlpha(210),
+                        color: p.scaffoldBg.withAlpha(230),
                         borderRadius: BorderRadius.circular(11),
-                        border: Border.all(color: p.secondaryAccent.withAlpha(70)),
+                        border: Border.all(color: p.secondaryAccent.withAlpha(80)),
                       ),
                       child: Row(
                         children: [
@@ -394,7 +403,7 @@ class _MatchesTabState extends State<MatchesTab> {
                               padding: const EdgeInsets.symmetric(horizontal: 4),
                               child: Text(
                                 _formatHungarianDayLabel(widget.selectedDate),
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white),
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: p.textPrimary),
                               ),
                             ),
                           ),
@@ -420,19 +429,19 @@ class _MatchesTabState extends State<MatchesTab> {
                               setState(() {});
                             }
                           },
-                          style: const TextStyle(fontSize: 13),
+                          style: TextStyle(fontSize: 13, color: p.textPrimary),
                           decoration: InputDecoration(
                             hintText: 'Keresés csapatra, országra vagy bajnokságra...',
-                            hintStyle: const TextStyle(color: Colors.white54, fontSize: 12),
+                            hintStyle: TextStyle(color: p.textMuted, fontSize: 12),
                             prefixIcon: Icon(Icons.search, color: p.primaryAccent, size: 18),
                             suffixIcon: searchQuery.isNotEmpty
                                 ? IconButton(
-                                    icon: const Icon(Icons.close, size: 16, color: Colors.white54),
+                                    icon: Icon(Icons.close, size: 16, color: p.textMuted),
                                     onPressed: () => _applyQuickSearch(''),
                                   )
                                 : null,
                             filled: true,
-                            fillColor: p.scaffoldBg.withAlpha(210),
+                            fillColor: p.scaffoldBg.withAlpha(230),
                             contentPadding: EdgeInsets.zero,
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(11),
@@ -465,16 +474,16 @@ class _MatchesTabState extends State<MatchesTab> {
                                 padding: const EdgeInsets.symmetric(horizontal: 9),
                                 alignment: Alignment.center,
                                 decoration: BoxDecoration(
-                                  color: active ? p.goldAccent : p.scaffoldBg.withAlpha(185),
+                                  color: active ? p.goldAccent : p.scaffoldBg.withAlpha(215),
                                   borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: active ? p.goldAccent : Colors.white12),
+                                  border: Border.all(color: active ? p.goldAccent : p.borderSubtle),
                                 ),
                                 child: Text(
                                   chipText,
                                   style: TextStyle(
                                     fontSize: 10.5,
                                     fontWeight: FontWeight.w700,
-                                    color: active ? Colors.black : Colors.white70,
+                                    color: active ? Colors.white : p.textSecondary,
                                   ),
                                 ),
                               ),
@@ -491,13 +500,13 @@ class _MatchesTabState extends State<MatchesTab> {
                               padding: const EdgeInsets.symmetric(horizontal: 8),
                               alignment: Alignment.center,
                               decoration: BoxDecoration(
-                                color: Colors.redAccent.withAlpha(30),
+                                color: p.liveRed.withAlpha(24),
                                 borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: Colors.redAccent.withAlpha(90)),
+                                border: Border.all(color: p.liveRed.withAlpha(90)),
                               ),
-                              child: const Text(
+                              child: Text(
                                 '✕ Előzmény',
-                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.redAccent),
+                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: p.liveRed),
                               ),
                             ),
                           ),
@@ -568,7 +577,7 @@ class _MatchesTabState extends State<MatchesTab> {
                             const SizedBox(width: 8),
                             Text(
                               '${lm.homeTeam}  ${lm.homeScore} - ${lm.awayScore}  ${lm.awayTeam}',
-                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: p.textPrimary),
                             ),
                             if (badgeSuffix.isNotEmpty)
                               Text(
@@ -605,7 +614,7 @@ class _MatchesTabState extends State<MatchesTab> {
                   Expanded(
                     child: Text(
                       'Add meg a ${ApiConfig.providerName} kulcsodat az élő meccsekhez!',
-                      style: const TextStyle(fontSize: 12),
+                      style: TextStyle(fontSize: 12, color: p.textPrimary),
                     ),
                   ),
                   const SizedBox(width: 6),
@@ -616,7 +625,7 @@ class _MatchesTabState extends State<MatchesTab> {
                       minimumSize: Size.zero,
                     ),
                     onPressed: widget.onOpenSettings,
-                    child: const Text('Kulcs', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11)),
+                    child: const Text('Kulcs', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)),
                   ),
                 ],
               ),
@@ -630,13 +639,13 @@ class _MatchesTabState extends State<MatchesTab> {
                 margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                 decoration: BoxDecoration(
-                  color: Colors.amber.withAlpha(30),
+                  color: p.goldAccent.withAlpha(28),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.amber.withAlpha(120)),
+                  border: Border.all(color: p.goldAccent.withAlpha(120)),
                 ),
                 child: Text(
                   widget.statusMessage!,
-                  style: const TextStyle(fontSize: 11, color: Colors.amberAccent),
+                  style: TextStyle(fontSize: 11, color: p.goldAccent, fontWeight: FontWeight.w600),
                   textAlign: TextAlign.center,
                 ),
               ),
@@ -669,7 +678,7 @@ class _MatchesTabState extends State<MatchesTab> {
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         gradient: isSelected
-                            ? LinearGradient(colors: [accent, accent.withAlpha(190)])
+                            ? LinearGradient(colors: [accent, accent.withAlpha(210)])
                             : null,
                         color: isSelected ? null : p.cardElevated,
                         borderRadius: BorderRadius.circular(14),
@@ -680,7 +689,7 @@ class _MatchesTabState extends State<MatchesTab> {
                       child: Text(
                         label,
                         style: TextStyle(
-                          color: isSelected ? Colors.black : Colors.white,
+                          color: isSelected ? Colors.white : p.textPrimary,
                           fontWeight: FontWeight.w800,
                           fontSize: 11.5,
                         ),
@@ -698,9 +707,9 @@ class _MatchesTabState extends State<MatchesTab> {
               onRefresh: widget.onRefresh,
               child: competitionKeys.isEmpty
                   ? ListView(
-                      children: const [
-                        SizedBox(height: 100),
-                        Center(child: Text('Nincs a szűrésnek megfelelő meccs.', style: TextStyle(color: Colors.white60))),
+                      children: [
+                        const SizedBox(height: 100),
+                        Center(child: Text('Nincs a szűrésnek megfelelő meccs.', style: TextStyle(color: p.textMuted))),
                       ],
                     )
                   : ListView.builder(
@@ -738,9 +747,9 @@ class _MatchesTabState extends State<MatchesTab> {
                                   decoration: BoxDecoration(
                                     gradient: LinearGradient(
                                       colors: [
-                                        accent.withAlpha(62),
+                                        accent.withAlpha(p.isLight ? 36 : 62),
                                         p.cardElevated,
-                                        accent.withAlpha(20),
+                                        accent.withAlpha(p.isLight ? 16 : 20),
                                       ],
                                     ),
                                     borderRadius: BorderRadius.vertical(
@@ -762,7 +771,7 @@ class _MatchesTabState extends State<MatchesTab> {
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                                         decoration: BoxDecoration(
-                                          color: p.scaffoldBg.withAlpha(215),
+                                          color: p.scaffoldBg.withAlpha(230),
                                           borderRadius: BorderRadius.circular(6),
                                           border: Border.all(color: accent.withAlpha(120)),
                                         ),
@@ -790,10 +799,10 @@ class _MatchesTabState extends State<MatchesTab> {
                                       Expanded(
                                         child: Text(
                                           leagueName,
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             fontSize: 12,
                                             fontWeight: FontWeight.w900,
-                                            color: Colors.white,
+                                            color: p.textPrimary,
                                             letterSpacing: 0.3,
                                           ),
                                           overflow: TextOverflow.ellipsis,
@@ -806,14 +815,14 @@ class _MatchesTabState extends State<MatchesTab> {
                                           child: Icon(
                                             isPinned ? Icons.push_pin : Icons.push_pin_outlined,
                                             size: 16,
-                                            color: isPinned ? p.goldAccent : Colors.white38,
+                                            color: isPinned ? p.goldAccent : p.textMuted,
                                           ),
                                         ),
                                       ),
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                                         decoration: BoxDecoration(
-                                          color: Colors.black38,
+                                          color: p.scaffoldBg.withAlpha(200),
                                           borderRadius: BorderRadius.circular(10),
                                         ),
                                         child: Text(
@@ -825,7 +834,7 @@ class _MatchesTabState extends State<MatchesTab> {
                                       Icon(
                                         isCollapsed ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_up,
                                         size: 18,
-                                        color: Colors.white70,
+                                        color: p.textSecondary,
                                       ),
                                     ],
                                   ),
@@ -875,7 +884,7 @@ class _MatchesTabState extends State<MatchesTab> {
           padding: const EdgeInsets.symmetric(vertical: 5.5),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: active ? accent : p.scaffoldBg.withAlpha(200),
+            color: active ? accent : p.scaffoldBg.withAlpha(220),
             borderRadius: BorderRadius.circular(9),
             border: Border.all(color: active ? accent : p.borderSubtle),
           ),
@@ -884,7 +893,7 @@ class _MatchesTabState extends State<MatchesTab> {
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w800,
-              color: active ? Colors.black : Colors.white70,
+              color: active ? Colors.white : p.textSecondary,
             ),
           ),
         ),
@@ -967,18 +976,19 @@ class MatchCard extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
                           decoration: BoxDecoration(
-                            color: Colors.white.withAlpha(14),
+                            color: p.cardElevated,
                             borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: p.borderSubtle),
                           ),
                           child: Text(
                             match.status,
-                            style: const TextStyle(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.w700),
+                            style: TextStyle(color: p.textMuted, fontSize: 10, fontWeight: FontWeight.w700),
                           ),
                         ),
                       ] else ...[
                         Text(
                           match.status,
-                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800),
+                          style: TextStyle(color: p.textPrimary, fontSize: 12, fontWeight: FontWeight.w800),
                           textAlign: TextAlign.center,
                         ),
                       ],
@@ -994,7 +1004,7 @@ class MatchCard extends StatelessWidget {
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: [match.homeColor.withAlpha(200), match.awayColor.withAlpha(200)],
+                      colors: [match.homeColor.withAlpha(210), match.awayColor.withAlpha(210)],
                     ),
                   ),
                 ),
@@ -1003,6 +1013,7 @@ class MatchCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _teamLine(
+                        p: p,
                         name: match.homeTeam,
                         color: match.homeColor,
                         logoUrl: match.homeLogo,
@@ -1012,6 +1023,7 @@ class MatchCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 7),
                       _teamLine(
+                        p: p,
                         name: match.awayTeam,
                         color: match.awayColor,
                         logoUrl: match.awayLogo,
@@ -1029,10 +1041,10 @@ class MatchCard extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: match.isLive
                         ? p.primaryAccent.withAlpha(22)
-                        : Colors.white.withAlpha(10),
+                        : p.cardElevated,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: match.isLive ? p.primaryAccent.withAlpha(90) : Colors.white10,
+                      color: match.isLive ? p.primaryAccent.withAlpha(100) : p.borderSubtle,
                     ),
                   ),
                   child: Column(
@@ -1045,7 +1057,7 @@ class MatchCard extends StatelessWidget {
                           fontWeight: FontWeight.w900,
                           color: match.isLive
                               ? p.primaryAccent
-                              : (homeWinning ? Colors.white : Colors.white60),
+                              : (homeWinning ? p.textPrimary : p.textMuted),
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -1056,7 +1068,7 @@ class MatchCard extends StatelessWidget {
                           fontWeight: FontWeight.w900,
                           color: match.isLive
                               ? p.primaryAccent
-                              : (awayWinning ? Colors.white : Colors.white60),
+                              : (awayWinning ? p.textPrimary : p.textMuted),
                         ),
                       ),
                     ],
@@ -1069,7 +1081,7 @@ class MatchCard extends StatelessWidget {
                     padding: const EdgeInsets.all(5),
                     child: Icon(
                       isFavorite ? Icons.star_rounded : Icons.star_outline_rounded,
-                      color: isFavorite ? p.goldAccent : Colors.white30,
+                      color: isFavorite ? p.goldAccent : p.textMuted,
                       size: 21,
                     ),
                   ),
@@ -1092,15 +1104,15 @@ class MatchCard extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                       decoration: BoxDecoration(
                         color: isRed
-                            ? p.liveRed.withAlpha(32)
+                            ? p.liveRed.withAlpha(28)
                             : (isYellow
-                                ? p.goldAccent.withAlpha(22)
-                                : Colors.white.withAlpha(12)),
+                                ? p.goldAccent.withAlpha(24)
+                                : p.cardElevated),
                         borderRadius: BorderRadius.circular(7),
                         border: Border.all(
                           color: isRed
                               ? p.liveRed.withAlpha(110)
-                              : (isYellow ? p.goldAccent.withAlpha(90) : Colors.white12),
+                              : (isYellow ? p.goldAccent.withAlpha(90) : p.borderSubtle),
                         ),
                       ),
                       child: Row(
@@ -1113,8 +1125,8 @@ class MatchCard extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 10.5,
                               color: isRed
-                                  ? const Color(0xFFFF8A80)
-                                  : (isYellow ? const Color(0xFFFFE082) : Colors.white70),
+                                  ? p.liveRed
+                                  : (isYellow ? p.goldAccent : p.textSecondary),
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -1132,6 +1144,7 @@ class MatchCard extends StatelessWidget {
   }
 
   Widget _teamLine({
+    required AppPalette p,
     required String name,
     required Color color,
     required String? logoUrl,
@@ -1157,7 +1170,7 @@ class MatchCard extends StatelessWidget {
             style: TextStyle(
               fontSize: 13.5,
               fontWeight: (isWinning || isFavTeam) ? FontWeight.w800 : FontWeight.w600,
-              color: isFavTeam ? const Color(0xFFFFD54F) : (dimTeam ? Colors.white54 : Colors.white),
+              color: isFavTeam ? p.goldAccent : (dimTeam ? p.textMuted : p.textPrimary),
             ),
           ),
         ),
