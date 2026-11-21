@@ -55,10 +55,33 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
     }
   }
 
+  String _buildFormattedShareSummary() {
+    final goals = _match.events
+        .where((e) => e.type == 'goal')
+        .map((e) => '${e.player} (${e.minute})')
+        .toList();
+    final reds = _match.events
+        .where((e) => e.type == 'red')
+        .map((e) => '${e.player} (${e.minute})')
+        .toList();
+
+    final buf = StringBuffer()
+      ..writeln('⚽ ${_match.homeTeam} ${_match.homeScore} - ${_match.awayScore} ${_match.awayTeam}')
+      ..writeln('🏆 ${_match.country} • ${_match.league} (${_match.status})');
+    if (goals.isNotEmpty) {
+      buf.writeln('Gólok: ${goals.join(', ')}');
+    }
+    if (reds.isNotEmpty) {
+      buf.writeln('Piros lapok: ${reds.join(', ')}');
+    }
+    buf.write('— zsoltscores');
+    return buf.toString();
+  }
+
   void _shareMatchSummary() {
-    Clipboard.setData(ClipboardData(text: _match.buildShareText()));
+    Clipboard.setData(ClipboardData(text: _buildFormattedShareSummary()));
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Meccsállás és góllövők másolva a vágólapra!')),
+      const SnackBar(content: Text('Rendezett meccsösszefoglaló másolva a vágólapra!')),
     );
   }
 
@@ -88,6 +111,19 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
   int _shotAccuracy(int onTarget, int totalShots) {
     if (totalShots <= 0) return 0;
     return ((onTarget * 100) / totalShots).round().clamp(0, 100);
+  }
+
+  Color _h2hRowAccent(H2HFixture h, AppPalette p) {
+    final parts = RegExp(r'\d+').allMatches(h.scoreLabel).map((m) => int.tryParse(m.group(0)!) ?? -1).toList();
+    if (parts.length >= 2 && parts[0] >= 0 && parts[1] >= 0) {
+      if (parts[0] == parts[1]) return p.goldAccent;
+      final homeTeamMatchesCurrentHome = h.homeTeam.toLowerCase().contains(_match.homeTeam.toLowerCase()) ||
+          _match.homeTeam.toLowerCase().contains(h.homeTeam.toLowerCase());
+      final homeWon = parts[0] > parts[1];
+      final currentHomeWon = homeTeamMatchesCurrentHome ? homeWon : !homeWon;
+      return currentHomeWon ? p.primaryAccent : p.secondaryAccent;
+    }
+    return p.primaryAccent;
   }
 
   Widget _dominanceSummaryCard(AppPalette p, int homeAttackIndex, int awayAttackIndex, int homeAcc, int awayAcc) {
@@ -388,29 +424,44 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                         const SizedBox(height: 12),
                         Text('Egymás elleni meccsek (H2H)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: p.textPrimary)),
                         const SizedBox(height: 8),
-                        ..._match.h2hFixtures.map((h) => Container(
-                              margin: const EdgeInsets.only(bottom: 6),
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                              decoration: BoxDecoration(
-                                color: p.cardElevated,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: p.borderSubtle),
+                        ..._match.h2hFixtures.map((h) {
+                          final accent = _h2hRowAccent(h, p);
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 6),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                            decoration: BoxDecoration(
+                              color: accent.withAlpha(14),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border(
+                                left: BorderSide(color: accent, width: 3.5),
+                                top: BorderSide(color: accent.withAlpha(65)),
+                                right: BorderSide(color: accent.withAlpha(65)),
+                                bottom: BorderSide(color: accent.withAlpha(65)),
                               ),
-                              child: Row(
-                                children: [
-                                  Text(h.dateLabel, style: TextStyle(fontSize: 11, color: p.textMuted)),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      '${h.homeTeam} - ${h.awayTeam}',
-                                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: p.textPrimary),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
+                            ),
+                            child: Row(
+                              children: [
+                                Text(h.dateLabel, style: TextStyle(fontSize: 11, color: p.textMuted)),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    '${h.homeTeam} - ${h.awayTeam}',
+                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: p.textPrimary),
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                  Text(h.scoreLabel, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: p.primaryAccent)),
-                                ],
-                              ),
-                            )),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: accent.withAlpha(25),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(h.scoreLabel, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: accent)),
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
                       ],
                     ],
                   ),
@@ -507,12 +558,14 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                           teamName: _match.homeTeam,
                           accent: _match.homeColor,
                           lineup: _match.homeLineup!,
+                          events: _match.events.where((e) => e.isHome).toList(),
                         ),
                       if (_match.awayLineup != null)
                         FormationPitchView(
                           teamName: _match.awayTeam,
                           accent: _match.awayColor,
                           lineup: _match.awayLineup!,
+                          events: _match.events.where((e) => !e.isHome).toList(),
                         ),
                       if (_match.homeLineup != null) ...[
                         const SizedBox(height: 6),
