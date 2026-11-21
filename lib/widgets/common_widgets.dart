@@ -92,6 +92,17 @@ class CountryFlagBadge extends StatelessWidget {
     final p = AppThemeController.instance.palette;
     final assetPath = _assetForCountry(countryName);
     final url = (flagUrl ?? '').trim();
+    final cdn = SportsApiService.countryFlagCdnUrl(countryName) ?? '';
+
+    Widget emoji() => Text(_emojiFallback(countryName), style: TextStyle(fontSize: height));
+
+    Widget networkFlag(String u) => Image.network(
+          u,
+          width: width,
+          height: height,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => emoji(),
+        );
 
     Widget content;
     if (assetPath != null) {
@@ -100,18 +111,18 @@ class CountryFlagBadge extends StatelessWidget {
         width: width,
         height: height,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Text(_emojiFallback(countryName), style: TextStyle(fontSize: height)),
+        errorBuilder: (_, __, ___) {
+          if (url.startsWith('http')) return networkFlag(url);
+          if (cdn.startsWith('http')) return networkFlag(cdn);
+          return emoji();
+        },
       );
     } else if (url.startsWith('http')) {
-      content = Image.network(
-        url,
-        width: width,
-        height: height,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Text(_emojiFallback(countryName), style: TextStyle(fontSize: height)),
-      );
+      content = networkFlag(url);
+    } else if (cdn.startsWith('http')) {
+      content = networkFlag(cdn);
     } else {
-      content = Text(_emojiFallback(countryName), style: TextStyle(fontSize: height));
+      content = emoji();
     }
 
     return Container(
