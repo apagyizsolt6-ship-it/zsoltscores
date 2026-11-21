@@ -899,17 +899,21 @@ final Map<String, List<TopScorerRow>> sampleTopScorers = {
 class SportsApiService {
   SportsApiService._();
 
-  static const String _statpalBaseUrl = 'https://www.statpal.io/api/v2/soccer';
+  static const String _statpalBaseUrl = 'https://statpal.io/api/v2/soccer';
 
-  static const Map<String, int> statpalLeagueIds = {
-    'Premier League': 1,
-    'La Liga': 2,
-    'Serie A': 3,
-    'Bundesliga': 4,
-    'Ligue 1': 5,
-    'NB I': 24,
-    'Bajnokok Ligája': 10,
+  /// StatPal V2 bajnokság slug-ok a tabella és menetrend végpontokhoz
+  static const Map<String, String> statpalLeagueSlugs = {
+    'Premier League': 'england-premier-league',
+    'La Liga': 'spain-la-liga',
+    'Serie A': 'italy-serie-a',
+    'Bundesliga': 'germany-bundesliga',
+    'Ligue 1': 'france-ligue-1',
+    'NB I': 'hungary-nb-i',
+    'Bajnokok Ligája': 'uefa-champions-league',
   };
+
+  /// Kompatibilitás a Tabella fül kulcslistájához
+  static Map<String, String> get statpalLeagueIds => statpalLeagueSlugs;
 
   static String formatDate(DateTime dt) {
     final y = dt.year.toString().padLeft(4, '0');
@@ -941,23 +945,27 @@ class SportsApiService {
 
   static Future<String> fetchStatPalDailyUsage(String rawKey) async {
     final key = rawKey.trim().isNotEmpty ? rawKey.trim() : ApiConfig.activeKey;
-    if (key.isEmpty) return 'Add meg a StatPal kulcsot a keret lekérdezéséhez.';
+    if (key.isEmpty) return 'Add meg a StatPal kulcsot az ellenőrzéshez.';
 
     try {
-      final uri = Uri.parse('$_statpalBaseUrl/usage?api_key=$key');
-      final res = await http.get(uri).timeout(const Duration(seconds: 10));
+      final uri = Uri.parse('$_statpalBaseUrl/livescores?access_key=$key');
+      final res = await http.get(uri).timeout(const Duration(seconds: 12));
       if (res.statusCode == 200) {
-        final json = jsonDecode(res.body);
-        final data = json is Map<String, dynamic> ? (json['data'] ?? json) : null;
-        if (data is Map<String, dynamic>) {
-          final used = data['requests_today'] ?? data['used'] ?? data['count'] ?? '?';
-          final limit = data['daily_limit'] ?? data['limit'] ?? '?';
-          return 'Mai StatPal használat: $used / $limit kérés';
+        final rem = res.headers['x-ratelimit-remaining'] ?? res.headers['ratelimit-remaining'];
+        final lim = res.headers['x-ratelimit-limit'] ?? res.headers['ratelimit-limit'];
+        if (rem != null && lim != null) {
+          return 'Kapcsolat OK ✓ • Hátralévő keret: $rem / $lim kérés';
         }
+        final decoded = jsonDecode(res.body);
+        final list = _extractMatchesFromStatPal(decoded);
+        return 'StatPal V2 kapcsolat aktív ✓ (${list.length} élő meccs)';
       }
-      return 'StatPal státusz: HTTP ${res.statusCode}';
+      if (res.statusCode == 401 || res.statusCode == 403) {
+        return 'Érvénytelen StatPal access_key (HTTP ${res.statusCode})';
+      }
+      return 'StatPal válasz: HTTP ${res.statusCode}';
     } catch (e) {
-      return 'Keretellenőrzés sikertelen: $e';
+      return 'Kapcsolati hiba: $e';
     }
   }
 
@@ -966,11 +974,13 @@ class SportsApiService {
     bool forceRefresh = false,
   }) async {
     final dateStr = formatDate(date);
-    final cacheKey = 'matches_$dateStr';
+    final todayStr = formatDate(DateTime.now());
+    final isToday = dateStr == todayStr;
+    final cacheKey = 'sp_matches_$dateStr';
     final now = DateTime.now();
 
     if (!forceRefresh) {
-      final cached = await ApiCache.get(cacheKey);
+      final cached = await ApiCache.get(cacheKey, customTtlMinutes: isToday ? 1 : ApiCache.cacheMinutes);
       if (cached is List) {
         final list = cached
             .map((e) => MatchData.fromJson(Map<String, dynamic>.from(e as Map)))
@@ -983,18 +993,42 @@ class SportsApiService {
       throw Exception('Hiányzó StatPal API kulcs');
     }
 
-    await ApiCache.recordNetworkRequest();
-    final uri = Uri.parse('$_statpalBaseUrl/matches?api_key=${ApiConfig.activeKey}&date=$dateStr');
-    final res = await http.get(uri).timeout(const Duration(seconds: 15));
+    final key = ApiConfig.activeKey;
+    final collected = <String, MatchData>{};
 
-    if (res.statusCode != 200) {
-      throw Exception('StatPal hiba (HTTP ${res.statusCode})');
+    // 1. Mai napon lekérjük az élő/mai meccseket a /livescores végpontról
+    if (isToday) {
+      await ApiCache.recordNetworkRequest();
+      final liveUri = Uri.parse('$_statpalBaseUrl/livescores?access_key=$key');
+      final liveRes = await http.get(liveUri).timeout(const Duration(seconds: 15));
+      if (liveRes.statusCode == 200) {
+        final decoded = jsonDecode(liveRes.body);
+        for (final m in _extractMatchesFromStatPal(decoded)) {
+          collected[m.id] = m;
+        }
+      } else if (liveRes.statusCode == 401 || liveRes.statusCode == 403) {
+        throw Exception('Érvénytelen StatPal access_key (HTTP ${liveRes.statusCode})');
+      }
     }
 
-    final decoded = jsonDecode(res.body);
-    final rawList = _extractList(decoded, ['matches', 'fixtures', 'data']);
-    final parsed = rawList.map((item) => _parseStatPalMatch(Map<String, dynamic>.from(item as Map))).toList();
+    // 2. Ha nem ma van (vagy kiegészítésként), lekérjük a kiemelt bajnokságok meccseit adott dátumra
+    if (!isToday || collected.isEmpty) {
+      for (final entry in statpalLeagueSlugs.entries) {
+        try {
+          await ApiCache.recordNetworkRequest();
+          final uri = Uri.parse('$_statpalBaseUrl/matches/${entry.value}?access_key=$key');
+          final res = await http.get(uri).timeout(const Duration(seconds: 12));
+          if (res.statusCode == 200) {
+            final decoded = jsonDecode(res.body);
+            for (final m in _extractMatchesFromStatPal(decoded, filterDate: dateStr, fallbackLeague: entry.key)) {
+              collected[m.id] = m;
+            }
+          }
+        } catch (_) {}
+      }
+    }
 
+    final parsed = collected.values.toList();
     await ApiCache.set(cacheKey, parsed.map((m) => m.toJson()).toList());
     return FetchResult(data: parsed, fromCache: false, fetchedAt: now);
   }
@@ -1008,7 +1042,7 @@ class SportsApiService {
       return FetchResult(data: match, fromCache: false, fetchedAt: now);
     }
 
-    final cacheKey = 'detail_${match.id}';
+    final cacheKey = 'sp_detail_${match.id}';
     if (!forceRefresh) {
       final cached = await ApiCache.get(cacheKey, customTtlMinutes: 2);
       if (cached is Map) {
@@ -1019,7 +1053,7 @@ class SportsApiService {
 
     try {
       await ApiCache.recordNetworkRequest();
-      final uri = Uri.parse('$_statpalBaseUrl/match/${match.id}?api_key=${ApiConfig.activeKey}');
+      final uri = Uri.parse('$_statpalBaseUrl/match/${match.id}?access_key=${ApiConfig.activeKey}');
       final res = await http.get(uri).timeout(const Duration(seconds: 12));
       if (res.statusCode == 200) {
         final decoded = jsonDecode(res.body);
@@ -1043,8 +1077,8 @@ class SportsApiService {
     bool forceRefresh = false,
   }) async {
     final now = DateTime.now();
-    final leagueId = statpalLeagueIds[leagueName] ?? 1;
-    final cacheKey = 'standings_${leagueId}_$venueFilter';
+    final slug = statpalLeagueSlugs[leagueName] ?? 'england-premier-league';
+    final cacheKey = 'sp_standings_${slug}_$venueFilter';
 
     if (!forceRefresh) {
       final cached = await ApiCache.get(cacheKey, customTtlMinutes: 15);
@@ -1062,51 +1096,57 @@ class SportsApiService {
     }
 
     await ApiCache.recordNetworkRequest();
-    final uri = Uri.parse(
-      '$_statpalBaseUrl/standings?api_key=${ApiConfig.activeKey}&league_id=$leagueId&venue=$venueFilter',
-    );
+    final uri = Uri.parse('$_statpalBaseUrl/standings/$slug?access_key=${ApiConfig.activeKey}');
     final res = await http.get(uri).timeout(const Duration(seconds: 15));
     if (res.statusCode != 200) {
       throw Exception('HTTP ${res.statusCode}');
     }
 
     final decoded = jsonDecode(res.body);
-    final rawRows = _extractList(decoded, ['standings', 'table', 'rows', 'data']);
+    final rawRows = _extractStandingsRows(decoded);
     final rows = <StandingRow>[];
     for (var i = 0; i < rawRows.length; i++) {
-      final m = Map<String, dynamic>.from(rawRows[i] as Map);
-      final teamName = (m['team_name'] ?? m['team'] ?? m['name'] ?? 'Csapat').toString();
-      final pos = (m['position'] ?? m['rank'] ?? m['pos'] ?? (i + 1)) as num;
-      final played = (m['played'] ?? m['matches_played'] ?? 0) as num;
-      final won = (m['won'] ?? m['wins'] ?? 0) as num;
-      final drawn = (m['drawn'] ?? m['draws'] ?? 0) as num;
-      final lost = (m['lost'] ?? m['losses'] ?? 0) as num;
-      final gf = (m['goals_for'] ?? m['gf'] ?? 0) as num;
-      final ga = (m['goals_against'] ?? m['ga'] ?? 0) as num;
-      final gd = (m['goal_difference'] ?? m['gd'] ?? (gf.toInt() - ga.toInt())) as num;
-      final points = (m['points'] ?? m['pts'] ?? 0) as num;
+      final m = rawRows[i];
+      final teamName = (m['name'] ?? m['team_name'] ?? m['team'] ?? 'Csapat').toString();
+      final pos = int.tryParse((m['position'] ?? m['rank'] ?? m['pos'] ?? '${i + 1}').toString()) ?? (i + 1);
+
+      final overall = m['overall'] is Map ? Map<String, dynamic>.from(m['overall'] as Map) : m;
+      final scope = venueFilter == 'home' && m['home'] is Map
+          ? Map<String, dynamic>.from(m['home'] as Map)
+          : (venueFilter == 'away' && m['away'] is Map
+              ? Map<String, dynamic>.from(m['away'] as Map)
+              : overall);
+
+      final played = int.tryParse((scope['gp'] ?? scope['played'] ?? scope['matches_played'] ?? '0').toString()) ?? 0;
+      final won = int.tryParse((scope['w'] ?? scope['won'] ?? scope['wins'] ?? '0').toString()) ?? 0;
+      final drawn = int.tryParse((scope['d'] ?? scope['drawn'] ?? scope['draws'] ?? '0').toString()) ?? 0;
+      final lost = int.tryParse((scope['l'] ?? scope['lost'] ?? scope['losses'] ?? '0').toString()) ?? 0;
+      final gf = int.tryParse((scope['gs'] ?? scope['goals_for'] ?? scope['gf'] ?? '0').toString()) ?? 0;
+      final ga = int.tryParse((scope['ga'] ?? scope['goals_against'] ?? '0').toString()) ?? 0;
+      final gd = int.tryParse((m['gd'] ?? m['goal_difference'] ?? '${gf - ga}').toString()) ?? (gf - ga);
+      final points = int.tryParse((m['total']?['p'] ?? scope['p'] ?? m['points'] ?? m['pts'] ?? '0').toString()) ?? 0;
 
       String zone = 'none';
-      if (pos.toInt() <= 4) {
+      if (pos <= 4) {
         zone = 'ucl';
-      } else if (pos.toInt() <= 6) {
+      } else if (pos <= 6) {
         zone = 'uel';
-      } else if (rawRows.length >= 10 && pos.toInt() > rawRows.length - 3) {
+      } else if (rawRows.length >= 10 && pos > rawRows.length - 3) {
         zone = 'rel';
       }
 
       rows.add(StandingRow(
-        pos: pos.toInt(),
+        pos: pos,
         team: teamName,
-        logo: m['team_logo']?.toString() ?? m['logo']?.toString(),
-        played: played.toInt(),
-        won: won.toInt(),
-        drawn: drawn.toInt(),
-        lost: lost.toInt(),
-        gf: gf.toInt(),
-        ga: ga.toInt(),
-        gd: gd.toInt(),
-        points: points.toInt(),
+        logo: m['logo']?.toString(),
+        played: played,
+        won: won,
+        drawn: drawn,
+        lost: lost,
+        gf: gf,
+        ga: ga,
+        gd: gd,
+        points: points,
         zone: zone,
         color: colorFromName(teamName),
       ));
@@ -1116,101 +1156,156 @@ class SportsApiService {
     return FetchResult(data: rows, fromCache: false, fetchedAt: now);
   }
 
-  static List<dynamic> _extractList(dynamic decoded, List<String> keys) {
-    if (decoded is List) return decoded;
-    if (decoded is Map<String, dynamic>) {
-      for (final k in keys) {
-        final v = decoded[k];
-        if (v is List) return v;
-        if (v is Map<String, dynamic>) {
-          for (final subK in keys) {
-            if (v[subK] is List) return v[subK] as List;
+  /// StatPal V2 beágyazott `livescores.league[].match[]` és sima `matches[]` struktúrák feldolgozása
+  static List<MatchData> _extractMatchesFromStatPal(
+    dynamic decoded, {
+    String? filterDate,
+    String? fallbackLeague,
+  }) {
+    final out = <MatchData>[];
+    if (decoded is! Map<String, dynamic>) return out;
+
+    final root = decoded['livescores'] ?? decoded['fixtures'] ?? decoded['data'] ?? decoded;
+    if (root is Map<String, dynamic> && root['league'] != null) {
+      final leaguesRaw = root['league'] is List ? root['league'] as List : [root['league']];
+      for (final lg in leaguesRaw) {
+        if (lg is! Map) continue;
+        final lgMap = Map<String, dynamic>.from(lg);
+        final country = (lgMap['country'] ?? 'Nemzetközi').toString();
+        final leagueName = (lgMap['name'] ?? fallbackLeague ?? 'Bajnokság').toString();
+        final matchesRaw = lgMap['match'] is List
+            ? lgMap['match'] as List
+            : (lgMap['match'] != null ? [lgMap['match']] : const []);
+        for (final item in matchesRaw) {
+          if (item is Map) {
+            final mm = Map<String, dynamic>.from(item);
+            if (filterDate != null) {
+              final mDate = (mm['date'] ?? mm['formatted_date'] ?? '').toString();
+              if (mDate.isNotEmpty && !mDate.contains(filterDate) && !_matchesNormalizedDate(mDate, filterDate)) {
+                continue;
+              }
+            }
+            out.add(_parseStatPalMatch(mm, countryOverride: country, leagueOverride: leagueName));
           }
         }
       }
+      return out;
     }
-    return const [];
+
+    if (root is List) {
+      for (final item in root) {
+        if (item is Map) {
+          out.add(_parseStatPalMatch(Map<String, dynamic>.from(item), leagueOverride: fallbackLeague));
+        }
+      }
+    }
+    return out;
   }
 
-  static MatchData _parseStatPalMatch(Map<String, dynamic> m) {
-    final id = (m['id'] ?? m['match_id'] ?? UniqueKey().toString()).toString();
-    final country = (m['country'] ?? m['country_name'] ?? 'Nemzetközi').toString();
-    final league = (m['league_name'] ?? m['league'] ?? m['competition'] ?? 'Bajnokság').toString();
+  static bool _matchesNormalizedDate(String rawDate, String isoDate) {
+    // StatPal gyakran dd.MM.yyyy formátumot ad vissza (pl. 21.11.2026)
+    final parts = rawDate.split('.');
+    if (parts.length == 3) {
+      final normalized = '${parts[2].padLeft(4, '0')}-${parts[1].padLeft(2, '0')}-${parts[0].padLeft(2, '0')}';
+      return normalized == isoDate;
+    }
+    return false;
+  }
 
-    final homeObj = m['home_team'] is Map ? Map<String, dynamic>.from(m['home_team'] as Map) : <String, dynamic>{};
-    final awayObj = m['away_team'] is Map ? Map<String, dynamic>.from(m['away_team'] as Map) : <String, dynamic>{};
+  static List> _extractStandingsRows(dynamic decoded) {
+    final rows = >[];
+    if (decoded is! Map<String, dynamic>) return rows;
+    final root = decoded['standings'] ?? decoded['data'] ?? decoded;
+    if (root is Map<String, dynamic> && root['league'] != null) {
+      final lg = root['league'] is List ? (root['league'] as List).first : root['league'];
+      if (lg is Map && lg['team'] != null) {
+        final teams = lg['team'] is List ? lg['team'] as List : [lg['team']];
+        for (final t in teams) {
+          if (t is Map) rows.add(Map<String, dynamic>.from(t));
+        }
+      }
+    } else if (root is List) {
+      for (final t in root) {
+        if (t is Map) rows.add(Map<String, dynamic>.from(t));
+      }
+    }
+    return rows;
+  }
 
-    final homeTeam = (homeObj['name'] ?? m['home_team_name'] ?? m['homeTeam'] ?? 'Hazai').toString();
-    final awayTeam = (awayObj['name'] ?? m['away_team_name'] ?? m['awayTeam'] ?? 'Vendég').toString();
-    final homeLogo = (homeObj['logo'] ?? m['home_logo'])?.toString();
-    final awayLogo = (awayObj['logo'] ?? m['away_logo'])?.toString();
+  static MatchData _parseStatPalMatch(
+    Map<String, dynamic> m, {
+    String? countryOverride,
+    String? leagueOverride,
+  }) {
+    final id = (m['id'] ?? m['static_id'] ?? UniqueKey().toString()).toString();
+    final country = countryOverride ?? (m['country'] ?? 'Nemzetközi').toString();
+    final league = leagueOverride ?? (m['league_name'] ?? m['league'] ?? 'Bajnokság').toString();
 
-    final homeScore = ((m['home_score'] ?? homeObj['score'] ?? 0) as num).toInt();
-    final awayScore = ((m['away_score'] ?? awayObj['score'] ?? 0) as num).toInt();
+    final homeObj = m['home'] is Map ? Map<String, dynamic>.from(m['home'] as Map) : <String, dynamic>{};
+    final awayObj = m['away'] is Map ? Map<String, dynamic>.from(m['away'] as Map) : <String, dynamic>{};
 
-    final rawStatus = (m['status'] ?? m['match_status'] ?? '').toString().toUpperCase();
-    final minuteVal = (m['minute'] ?? m['elapsed'] ?? '').toString();
+    final homeTeam = (homeObj['name'] ?? m['home_team'] ?? 'Hazai').toString();
+    final awayTeam = (awayObj['name'] ?? m['away_team'] ?? 'Vendég').toString();
 
-    final isFinished = rawStatus.contains('FT') ||
-        rawStatus.contains('FIN') ||
-        rawStatus.contains('END') ||
-        rawStatus.contains('VÉGE');
-    final isLive = !isFinished &&
-        (rawStatus.contains('LIVE') ||
-            rawStatus.contains('INPLAY') ||
-            rawStatus.contains('1H') ||
-            rawStatus.contains('2H') ||
-            rawStatus.contains('HT') ||
-            minuteVal.isNotEmpty);
+    final homeScore = int.tryParse((homeObj['goals'] ?? homeObj['score'] ?? m['home_score'] ?? '0').toString()) ?? 0;
+    final awayScore = int.tryParse((awayObj['goals'] ?? awayObj['score'] ?? m['away_score'] ?? '0').toString()) ?? 0;
+
+    final rawStatus = (m['status'] ?? '').toString().trim();
+    final upperStatus = rawStatus.toUpperCase();
+
+    final isFinished = upperStatus == 'FT' || upperStatus == 'AET' || upperStatus == 'PEN' || upperStatus.contains('FIN');
+    final isNumericMinute = RegExp(r'^\d+(\+\d+)?$').hasMatch(rawStatus);
+    final isLive = !isFinished && (isNumericMinute || upperStatus == 'HT' || upperStatus == 'LIVE');
 
     String statusLabel;
     if (isFinished) {
       statusLabel = 'VÉGE';
-    } else if (isLive) {
-      statusLabel = minuteVal.isNotEmpty
-          ? (minuteVal.endsWith("'") ? minuteVal : "$minuteVal'")
-          : rawStatus;
+    } else if (isNumericMinute) {
+      statusLabel = "$rawStatus'";
+    } else if (upperStatus == 'HT') {
+      statusLabel = 'SZÜNET';
+    } else if (rawStatus.isNotEmpty) {
+      statusLabel = rawStatus;
     } else {
-      final startTime = (m['start_time'] ?? m['time'] ?? '').toString();
-      statusLabel = startTime.length >= 5 ? startTime.substring(0, 5) : (startTime.isNotEmpty ? startTime : 'HAMAROSAN');
+      final t = (m['time'] ?? '').toString();
+      statusLabel = t.length >= 5 ? t.substring(0, 5) : (t.isNotEmpty ? t : 'HAMAROSAN');
     }
 
     final events = <MatchEvent>[];
-    final rawEvents = m['events'];
-    if (rawEvents is List) {
-      for (final ev in rawEvents) {
-        if (ev is Map) {
-          final em = Map<String, dynamic>.from(ev);
-          final evTypeRaw = (em['type'] ?? em['event_type'] ?? '').toString().toLowerCase();
-          String mappedType = 'goal';
-          if (evTypeRaw.contains('red')) {
-            mappedType = 'red';
-          } else if (evTypeRaw.contains('yellow') || evTypeRaw.contains('card')) {
-            mappedType = 'yellow';
-          } else if (evTypeRaw.contains('sub')) {
-            mappedType = 'sub';
-          }
-          final minStr = (em['minute'] ?? '').toString();
-          events.add(MatchEvent(
-            minute: minStr.isEmpty ? '' : (minStr.endsWith("'") ? minStr : "$minStr'"),
-            type: mappedType,
-            player: (em['player_name'] ?? em['player'] ?? '').toString(),
-            isHome: (em['team'] ?? em['side'] ?? '').toString().toLowerCase().startsWith('h') ||
-                em['is_home'] == true,
-          ));
+    final eventsWrapper = m['events'] is Map ? Map<String, dynamic>.from(m['events'] as Map) : <String, dynamic>{};
+    final rawEvents = eventsWrapper['event'] is List
+        ? eventsWrapper['event'] as List
+        : (eventsWrapper['event'] != null ? [eventsWrapper['event']] : (m['events'] is List ? m['events'] as List : const []));
+
+    for (final ev in rawEvents) {
+      if (ev is Map) {
+        final em = Map<String, dynamic>.from(ev);
+        final evTypeRaw = (em['type'] ?? '').toString().toLowerCase();
+        String mappedType = 'goal';
+        if (evTypeRaw.contains('red')) {
+          mappedType = 'red';
+        } else if (evTypeRaw.contains('yellow') || evTypeRaw.contains('card')) {
+          mappedType = 'yellow';
+        } else if (evTypeRaw.contains('subst')) {
+          mappedType = 'sub';
         }
+        final minStr = (em['minute'] ?? '').toString();
+        final teamSide = (em['team'] ?? '').toString().toLowerCase();
+        events.add(MatchEvent(
+          minute: minStr.isEmpty ? '' : (minStr.endsWith("'") ? minStr : "$minStr'"),
+          type: mappedType,
+          player: (em['player'] ?? em['result'] ?? '').toString(),
+          isHome: teamSide == 'home' || teamSide == 'localteam',
+        ));
       }
     }
 
     return MatchData(
       id: id,
       country: country,
-      countryFlagUrl: m['country_flag']?.toString(),
       league: league,
       homeTeam: homeTeam,
       awayTeam: awayTeam,
-      homeLogo: homeLogo,
-      awayLogo: awayLogo,
       homeScore: homeScore,
       awayScore: awayScore,
       status: statusLabel,
@@ -1225,15 +1320,15 @@ class SportsApiService {
 
   static MatchData _applyDetailPayload(MatchData base, Map<String, dynamic> d) {
     final stats = d['statistics'] is Map ? Map<String, dynamic>.from(d['statistics'] as Map) : d;
-    final possH = ((stats['possession_home'] ?? stats['home_possession'] ?? base.possessionHome) as num).toInt();
-    final shotsH = ((stats['shots_home'] ?? stats['home_shots'] ?? base.shotsHome) as num).toInt();
-    final shotsA = ((stats['shots_away'] ?? stats['away_shots'] ?? base.shotsAway) as num).toInt();
-    final sotH = ((stats['shots_on_target_home'] ?? base.shotsOnTargetHome) as num).toInt();
-    final sotA = ((stats['shots_on_target_away'] ?? base.shotsOnTargetAway) as num).toInt();
-    final corH = ((stats['corners_home'] ?? base.cornersHome) as num).toInt();
-    final corA = ((stats['corners_away'] ?? base.cornersAway) as num).toInt();
-    final foulH = ((stats['fouls_home'] ?? base.foulsHome) as num).toInt();
-    final foulA = ((stats['fouls_away'] ?? base.foulsAway) as num).toInt();
+    final possH = int.tryParse((stats['possession_home'] ?? base.possessionHome).toString()) ?? base.possessionHome;
+    final shotsH = int.tryParse((stats['shots_home'] ?? base.shotsHome).toString()) ?? base.shotsHome;
+    final shotsA = int.tryParse((stats['shots_away'] ?? base.shotsAway).toString()) ?? base.shotsAway;
+    final sotH = int.tryParse((stats['shots_on_target_home'] ?? base.shotsOnTargetHome).toString()) ?? base.shotsOnTargetHome;
+    final sotA = int.tryParse((stats['shots_on_target_away'] ?? base.shotsOnTargetAway).toString()) ?? base.shotsOnTargetAway;
+    final corH = int.tryParse((stats['corners_home'] ?? base.cornersHome).toString()) ?? base.cornersHome;
+    final corA = int.tryParse((stats['corners_away'] ?? base.cornersAway).toString()) ?? base.cornersAway;
+    final foulH = int.tryParse((stats['fouls_home'] ?? base.foulsHome).toString()) ?? base.foulsHome;
+    final foulA = int.tryParse((stats['fouls_away'] ?? base.foulsAway).toString()) ?? base.foulsAway;
 
     return base.copyWith(
       possessionHome: possH.clamp(0, 100),
