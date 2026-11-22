@@ -293,6 +293,7 @@ class _StandingsTabState extends State<StandingsTab> {
   bool _loading = false;
   bool _isLiveRows = false;
   String? _statusBanner;
+  String? _infoLine;
   List<StandingRow> _rows = [];
 
   @override
@@ -332,6 +333,7 @@ class _StandingsTabState extends State<StandingsTab> {
         _rows = result.data;
         _isLiveRows = result.data.isNotEmpty;
         _statusBanner = result.note;
+        _infoLine = result.info;
         _loading = false;
       });
     } catch (e) {
@@ -339,6 +341,7 @@ class _StandingsTabState extends State<StandingsTab> {
         _rows = [];
         _isLiveRows = false;
         _statusBanner = 'StatPal tabella hiba ($selectedLeague): $e';
+        _infoLine = null;
         _loading = false;
       });
     }
@@ -550,6 +553,14 @@ class _StandingsTabState extends State<StandingsTab> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    if (_isLiveRows && (_infoLine ?? '').isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          _infoLine!,
+                          style: TextStyle(fontSize: 11, color: p.textSecondary),
+                        ),
+                      ),
                   ],
                 ),
                 Row(
