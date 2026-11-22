@@ -54,29 +54,40 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
       bg = p.liveRed;
     }
     return Container(
-      width: 24,
-      height: 24,
+      width: 26,
+      height: 26,
       margin: const EdgeInsets.only(right: 6),
       alignment: Alignment.center,
       decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
-      child: Text(code, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10.5)),
+      child: Text(
+        code,
+        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11),
+      ),
     );
   }
 
-  Widget _statTile(AppPalette p, String label, String value, Color accent) {
+  Widget _statBox(AppPalette p, String label, String value, Color accent) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 8),
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
         decoration: BoxDecoration(
           color: p.scaffoldBg.withAlpha(210),
-          borderRadius: BorderRadius.circular(11),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(color: p.borderSubtle),
         ),
         child: Column(
           children: [
-            Text(value, style: TextStyle(fontWeight: FontWeight.w900, color: accent, fontSize: 13.5)),
+            Text(
+              value,
+              style: TextStyle(fontWeight: FontWeight.w900, color: accent, fontSize: 14),
+            ),
             const SizedBox(height: 2),
-            Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10, color: p.textMuted)),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 10, color: p.textMuted),
+            ),
           ],
         ),
       ),
@@ -97,7 +108,7 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
     final gfAvg = played > 0 ? (row!.gf / played).toStringAsFixed(1) : '-';
     final gaAvg = played > 0 ? (row!.ga / played).toStringAsFixed(1) : '-';
     final gdText = row != null ? (row.gd > 0 ? '+${row.gd}' : '${row.gd}') : '-';
-    final cleanSheetApprox = widget.relatedMatches.where((m) {
+    final cleanSheets = widget.relatedMatches.where((m) {
       if (!m.isFinished) return false;
       final isHome = m.homeTeam.toLowerCase().contains(widget.teamName.toLowerCase());
       return isHome ? m.awayScore == 0 : m.homeScore == 0;
@@ -109,9 +120,12 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
         backgroundColor: p.cardElevated,
         actions: [
           IconButton(
-            tooltip: _isFav ? 'Eltávolítás a kedvenc csapatokból' : 'Hozzáadás a kedvenc csapatokhoz',
+            tooltip: _isFav ? 'Eltávolítás a kedvencekből' : 'Hozzáadás a kedvencekhez',
             onPressed: _toggleFav,
-            icon: Icon(_isFav ? Icons.star_rounded : Icons.star_outline_rounded, color: p.goldAccent),
+            icon: Icon(
+              _isFav ? Icons.star_rounded : Icons.star_outline_rounded,
+              color: p.goldAccent,
+            ),
           ),
         ],
       ),
@@ -131,19 +145,31 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
             ),
             child: Row(
               children: [
-                CachedTeamLogo(teamName: widget.teamName, fallbackColor: widget.accentColor, logoUrl: widget.logoUrl, radius: 28),
+                CachedTeamLogo(
+                  teamName: widget.teamName,
+                  fallbackColor: widget.accentColor,
+                  logoUrl: widget.logoUrl,
+                  radius: 28,
+                ),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(widget.teamName, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: p.textPrimary)),
+                      Text(
+                        widget.teamName,
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: p.textPrimary),
+                      ),
                       const SizedBox(height: 4),
                       Text(
                         row != null
                             ? '${row.pos}. hely • ${row.points} pont • GK: $gdText'
                             : (_isFav ? '★ Kedvenc csapat (kiemelt a meccseknél)' : 'Koppints a csillagra a kedvenceléshez'),
-                        style: TextStyle(fontSize: 12, color: _isFav ? p.goldAccent : p.textSecondary, fontWeight: FontWeight.w600),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _isFav ? p.goldAccent : p.textSecondary,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ],
                   ),
@@ -165,8 +191,14 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Utolsó 5 meccs formája', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: p.textPrimary)),
-                    Text('$pts pont / 15', style: TextStyle(color: p.primaryAccent, fontWeight: FontWeight.w900)),
+                    Text(
+                      'Utolsó 5 meccs formája',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: p.textPrimary),
+                    ),
+                    Text(
+                      '$pts pont / 15',
+                      style: TextStyle(color: p.primaryAccent, fontWeight: FontWeight.w900),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 10),
@@ -174,28 +206,31 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    _statTile(p, 'Győzelem', '$wCount', p.primaryAccent),
+                    _statBox(p, 'Győzelem', '$wCount', p.primaryAccent),
                     const SizedBox(width: 8),
-                    _statTile(p, 'Döntetlen', '$dCount', p.goldAccent),
+                    _statBox(p, 'Döntetlen', '$dCount', p.goldAccent),
                     const SizedBox(width: 8),
-                    _statTile(p, 'Vereség', '$lCount', p.liveRed),
+                    _statBox(p, 'Vereség', '$lCount', p.liveRed),
                   ],
                 ),
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    _statTile(p, 'Rúgott/meccs', gfAvg, p.secondaryAccent),
+                    _statBox(p, 'Rúgott/meccs', gfAvg, p.secondaryAccent),
                     const SizedBox(width: 8),
-                    _statTile(p, 'Kapott/meccs', gaAvg, p.textSecondary),
+                    _statBox(p, 'Kapott/meccs', gaAvg, p.textSecondary),
                     const SizedBox(width: 8),
-                    _statTile(p, 'Hadosztály/CS', '$cleanSheetApprox', p.primaryAccent),
+                    _statBox(p, 'Nullás meccs', '$cleanSheets', p.primaryAccent),
                   ],
                 ),
               ],
             ),
           ),
           const SizedBox(height: 16),
-          Text('Kapcsolódó meccsek', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: p.textPrimary)),
+          Text(
+            'Kapcsolódó meccsek',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: p.textPrimary),
+          ),
           const SizedBox(height: 8),
           if (widget.relatedMatches.isEmpty)
             Container(
@@ -205,22 +240,27 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: p.borderSubtle),
               ),
-              child: Text('A kiválasztott napon nincs meccs a csapattal.', style: TextStyle(color: p.textMuted)),
+              child: Text(
+                'A kiválasztott napon nincs meccs a csapattal.',
+                style: TextStyle(color: p.textMuted),
+              ),
             )
           else
-            ...widget.relatedMatches.map((m) => Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  decoration: BoxDecoration(
-                    color: p.cardBg,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: p.borderSubtle),
-                  ),
-                  child: MatchCard(
-                    match: m,
-                    isFavorite: false,
-                    onToggleFavorite: () {},
-                  ),
-                )),
+            ...widget.relatedMatches.map(
+              (m) => Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                decoration: BoxDecoration(
+                  color: p.cardBg,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: p.borderSubtle),
+                ),
+                child: MatchCard(
+                  match: m,
+                  isFavorite: false,
+                  onToggleFavorite: () {},
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -244,9 +284,12 @@ class StandingsTab extends StatefulWidget {
 }
 
 class _StandingsTabState extends State<StandingsTab> {
+  final TextEditingController _searchController = TextEditingController();
   String selectedLeague = 'Premier League';
   String venueMode = 'all';
+  String teamQuery = '';
   bool showScorers = false;
+  bool onlyFavorites = false;
   bool _loading = false;
   bool _isLiveRows = false;
   String? _statusBanner;
@@ -258,12 +301,18 @@ class _StandingsTabState extends State<StandingsTab> {
     _loadStandings();
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadStandings({bool forceRefresh = false}) async {
     if (!ApiConfig.hasValidKey) {
       setState(() {
         _rows = sampleStandings[selectedLeague] ?? sampleStandings['Premier League'] ?? [];
         _isLiveRows = false;
-        _statusBanner = 'Nincs API kulcs beállítva – koppints a ⚙️ ikonra a valódi tabellához!';
+        _statusBanner = 'Nincs StatPal API kulcs beállítva – koppints a ⚙️ ikonra a valódi tabellához!';
       });
       return;
     }
@@ -289,10 +338,34 @@ class _StandingsTabState extends State<StandingsTab> {
       setState(() {
         _rows = [];
         _isLiveRows = false;
-        _statusBanner = 'API tabella hiba ($selectedLeague): $e';
+        _statusBanner = 'StatPal tabella hiba ($selectedLeague): $e';
         _loading = false;
       });
     }
+  }
+
+  List<String> _deriveFormFromMatches(String teamName) {
+    final q = teamName.trim().toLowerCase();
+    if (q.isEmpty) return const [];
+    final finished = widget.allMatches.where((m) {
+      if (!m.isFinished) return false;
+      return m.homeTeam.toLowerCase().contains(q) || m.awayTeam.toLowerCase().contains(q);
+    }).toList();
+
+    final codes = <String>[];
+    for (final m in finished.take(5)) {
+      final isHome = m.homeTeam.toLowerCase().contains(q);
+      final gf = isHome ? m.homeScore : m.awayScore;
+      final ga = isHome ? m.awayScore : m.homeScore;
+      if (gf > ga) {
+        codes.add('GY');
+      } else if (gf == ga) {
+        codes.add('D');
+      } else {
+        codes.add('V');
+      }
+    }
+    return codes;
   }
 
   Color _zoneColor(String zone) {
@@ -313,7 +386,10 @@ class _StandingsTabState extends State<StandingsTab> {
           decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3)),
         ),
         const SizedBox(width: 4),
-        Text(label, style: TextStyle(fontSize: 10.5, color: p.textSecondary, fontWeight: FontWeight.w600)),
+        Text(
+          label,
+          style: TextStyle(fontSize: 10.5, color: p.textSecondary, fontWeight: FontWeight.w600),
+        ),
       ],
     );
   }
@@ -348,7 +424,10 @@ class _StandingsTabState extends State<StandingsTab> {
     }
     return SizedBox(
       width: 22,
-      child: Text('$pos.', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: p.primaryAccent)),
+      child: Text(
+        '$pos.',
+        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: p.primaryAccent),
+      ),
     );
   }
 
@@ -363,23 +442,25 @@ class _StandingsTabState extends State<StandingsTab> {
       bg = p.liveRed;
     }
     return Container(
-      width: 14,
-      height: 14,
+      width: 15,
+      height: 15,
       margin: const EdgeInsets.only(right: 2),
       alignment: Alignment.center,
       decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(3)),
       child: Text(
         code.substring(0, 1),
-        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 8.5),
+        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 9),
       ),
     );
   }
 
-  void _openTeamProfile(StandingRow row) {
+  void _openTeamProfile(StandingRow row, List<String> effectiveForm) {
     final related = widget.allMatches
-        .where((m) =>
-            m.homeTeam.toLowerCase().contains(row.team.toLowerCase()) ||
-            m.awayTeam.toLowerCase().contains(row.team.toLowerCase()))
+        .where(
+          (m) =>
+              m.homeTeam.toLowerCase().contains(row.team.toLowerCase()) ||
+              m.awayTeam.toLowerCase().contains(row.team.toLowerCase()),
+        )
         .toList();
 
     Navigator.push(
@@ -389,7 +470,7 @@ class _StandingsTabState extends State<StandingsTab> {
           teamName: row.team,
           logoUrl: row.logo,
           accentColor: row.color,
-          form: row.form,
+          form: effectiveForm,
           standingRow: row,
           relatedMatches: related,
           onChanged: () {
@@ -404,8 +485,8 @@ class _StandingsTabState extends State<StandingsTab> {
   @override
   Widget build(BuildContext context) {
     final p = AppThemeController.instance.palette;
-    // Belső kulcs angol (API), megjelenítés magyar
     final leagues = SportsApiService.statpalLeagueIds.keys.toList();
+
     String leagueLabel(String key) {
       const labels = {
         'Premier League': 'Premier League',
@@ -415,9 +496,22 @@ class _StandingsTabState extends State<StandingsTab> {
         'Ligue 1': 'Ligue 1',
         'NB I': 'NB I',
         'Bajnokok Ligája': 'Bajnokok Ligája',
+        'Championship': 'Championship',
       };
       return labels[key] ?? SportsApiService.localizeLeague(key);
     }
+
+    final q = teamQuery.trim().toLowerCase();
+    final visibleRows = _rows.where((r) {
+      final matchesQuery = q.isEmpty || r.team.toLowerCase().contains(q);
+      final matchesFav = !onlyFavorites || DisplayPrefs.isFavoriteTeam(r.team);
+      return matchesQuery && matchesFav;
+    }).toList();
+
+    final totalGoals = _rows.fold<int>(0, (sum, r) => sum + r.gf);
+    final totalPlayed = _rows.fold<int>(0, (sum, r) => sum + r.played);
+    final avgGoalsPerMatch = totalPlayed > 0 ? (totalGoals / totalPlayed).toStringAsFixed(2) : '-';
+
     final scorers = sampleTopScorers[selectedLeague] ??
         const [
           TopScorerRow(rank: 1, player: 'Liga gólkirály', team: 'Éllovas', goals: 9, assists: 3),
@@ -441,13 +535,20 @@ class _StandingsTabState extends State<StandingsTab> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Bajnoki Tabellák 🏆', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: p.textPrimary)),
+                    Text(
+                      'Bajnoki Tabellák 🏆',
+                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: p.textPrimary),
+                    ),
                     const SizedBox(height: 4),
                     Text(
                       _isLiveRows
-                          ? '${ApiConfig.providerName} • ${_rows.length} csapatos állás'
+                          ? '${ApiConfig.providerName} • ${_rows.length} csapat • Átlag: $avgGoalsPerMatch gól/m'
                           : '${ApiConfig.providerName} • Részletes állás, gólok & forma',
-                      style: TextStyle(fontSize: 12, color: _isLiveRows ? p.primaryAccent : p.goldAccent, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: _isLiveRows ? p.primaryAccent : p.goldAccent,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ],
                 ),
@@ -478,11 +579,17 @@ class _StandingsTabState extends State<StandingsTab> {
               decoration: BoxDecoration(
                 color: _isLiveRows ? p.primaryAccent.withAlpha(24) : p.goldAccent.withAlpha(28),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: _isLiveRows ? p.primaryAccent.withAlpha(90) : p.goldAccent.withAlpha(120)),
+                border: Border.all(
+                  color: _isLiveRows ? p.primaryAccent.withAlpha(90) : p.goldAccent.withAlpha(120),
+                ),
               ),
               child: Text(
                 _statusBanner!,
-                style: TextStyle(fontSize: 11, color: _isLiveRows ? p.primaryAccent : p.goldAccent, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: _isLiveRows ? p.primaryAccent : p.goldAccent,
+                  fontWeight: FontWeight.w600,
+                ),
                 textAlign: TextAlign.center,
               ),
             ),
@@ -574,6 +681,18 @@ class _StandingsTabState extends State<StandingsTab> {
                   },
                 ),
                 const SizedBox(width: 6),
+                FilterChip(
+                  label: const Text('★ Kedvencek', style: TextStyle(fontSize: 11)),
+                  selected: !showScorers && onlyFavorites,
+                  selectedColor: p.goldAccent,
+                  backgroundColor: p.cardElevated,
+                  labelStyle: TextStyle(
+                    color: (!showScorers && onlyFavorites) ? Colors.white : p.textPrimary,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  onSelected: (val) => setState(() => onlyFavorites = val),
+                ),
+                const SizedBox(width: 6),
                 ChoiceChip(
                   label: const Text('⚽ Góllövők', style: TextStyle(fontSize: 11)),
                   selected: showScorers,
@@ -590,14 +709,54 @@ class _StandingsTabState extends State<StandingsTab> {
           ),
           if (!showScorers) ...[
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 6, 16, 2),
-              child: Wrap(
-                spacing: 12,
-                runSpacing: 4,
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 4),
+              child: Row(
                 children: [
-                  _zoneLegendItem(p.primaryAccent, 'BL / Top', p),
-                  _zoneLegendItem(p.secondaryAccent, 'EL / EKL', p),
-                  _zoneLegendItem(p.liveRed, 'Kieső zóna', p),
+                  Expanded(
+                    child: Wrap(
+                      spacing: 10,
+                      runSpacing: 4,
+                      children: [
+                        _zoneLegendItem(p.primaryAccent, 'BL / Top', p),
+                        _zoneLegendItem(p.secondaryAccent, 'EL / EKL', p),
+                        _zoneLegendItem(p.liveRed, 'Kieső', p),
+                      ],
+                    ),
+                  ),
+                  SizedBox(
+                    width: 136,
+                    height: 32,
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: (v) => setState(() => teamQuery = v),
+                      style: TextStyle(fontSize: 11.5, color: p.textPrimary),
+                      decoration: InputDecoration(
+                        hintText: 'Csapat kereső...',
+                        hintStyle: TextStyle(fontSize: 11, color: p.textMuted),
+                        prefixIcon: Icon(Icons.search, size: 15, color: p.textMuted),
+                        suffixIcon: teamQuery.isNotEmpty
+                            ? GestureDetector(
+                                onTap: () {
+                                  _searchController.clear();
+                                  setState(() => teamQuery = '');
+                                },
+                                child: Icon(Icons.close, size: 14, color: p.textMuted),
+                              )
+                            : null,
+                        filled: true,
+                        fillColor: p.cardElevated,
+                        contentPadding: EdgeInsets.zero,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(9),
+                          borderSide: BorderSide(color: p.borderSubtle),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(9),
+                          borderSide: BorderSide(color: p.borderSubtle),
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -607,40 +766,77 @@ class _StandingsTabState extends State<StandingsTab> {
                 children: [
                   SizedBox(width: 26, child: Text('#', style: TextStyle(color: p.textMuted, fontSize: 11))),
                   Expanded(child: Text('Csapat', style: TextStyle(color: p.textMuted, fontSize: 11))),
-                  SizedBox(width: 24, child: Text('M', textAlign: TextAlign.center, style: TextStyle(color: p.textMuted, fontSize: 11))),
-                  SizedBox(width: 58, child: Text('GY/D/V', textAlign: TextAlign.center, style: TextStyle(color: p.textMuted, fontSize: 10.5))),
-                  SizedBox(width: 44, child: Text('Gól', textAlign: TextAlign.center, style: TextStyle(color: p.textMuted, fontSize: 11))),
-                  SizedBox(width: 34, child: Text('GK', textAlign: TextAlign.center, style: TextStyle(color: p.textMuted, fontSize: 11))),
-                  SizedBox(width: 32, child: Text('P', textAlign: TextAlign.center, style: TextStyle(color: p.textSecondary, fontWeight: FontWeight.bold, fontSize: 11))),
+                  SizedBox(
+                    width: 24,
+                    child: Text('M', textAlign: TextAlign.center, style: TextStyle(color: p.textMuted, fontSize: 11)),
+                  ),
+                  SizedBox(
+                    width: 58,
+                    child: Text('GY/D/V', textAlign: TextAlign.center, style: TextStyle(color: p.textMuted, fontSize: 10.5)),
+                  ),
+                  SizedBox(
+                    width: 44,
+                    child: Text('Gól', textAlign: TextAlign.center, style: TextStyle(color: p.textMuted, fontSize: 11)),
+                  ),
+                  SizedBox(
+                    width: 34,
+                    child: Text('GK', textAlign: TextAlign.center, style: TextStyle(color: p.textMuted, fontSize: 11)),
+                  ),
+                  SizedBox(
+                    width: 32,
+                    child: Text(
+                      'P',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: p.textSecondary, fontWeight: FontWeight.bold, fontSize: 11),
+                    ),
+                  ),
                 ],
               ),
             ),
             Expanded(
-              child: _rows.isEmpty
+              child: visibleRows.isEmpty
                   ? Center(
                       child: Padding(
                         padding: const EdgeInsets.all(24),
-                        child: Text(
-                          _statusBanner ?? 'Ehhez a bajnoksághoz jelenleg nem érhető el tabella.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: p.textMuted),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              onlyFavorites && q.isEmpty
+                                  ? 'Ebben a bajnokságban nincs kedvenc csapatod.'
+                                  : (q.isNotEmpty
+                                      ? 'Nincs találat erre: "$teamQuery"'
+                                      : (_statusBanner ?? 'Ehhez a bajnoksághoz jelenleg nem érhető el tabella.')),
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: p.textMuted),
+                            ),
+                            if (ApiConfig.hasValidKey && q.isEmpty && !onlyFavorites) ...[
+                              const SizedBox(height: 12),
+                              FilledButton.icon(
+                                onPressed: () => _loadStandings(forceRefresh: true),
+                                icon: const Icon(Icons.refresh, size: 16),
+                                label: const Text('Újrapróbálás'),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
                     )
                   : ListView.builder(
                       padding: const EdgeInsets.symmetric(horizontal: 14),
-                      itemCount: _rows.length,
+                      itemCount: visibleRows.length,
                       itemBuilder: (context, index) {
-                        final r = _rows[index];
+                        final r = visibleRows[index];
                         final isFav = DisplayPrefs.isFavoriteTeam(r.team);
                         final hasWdl = (r.won + r.drawn + r.lost) > 0;
                         final wdlText = hasWdl ? '${r.won}/${r.drawn}/${r.lost}' : '-';
                         final goalsText = (r.gf > 0 || r.ga > 0) ? '${r.gf}:${r.ga}' : '-';
                         final isTop3 = r.pos <= 3;
+                        final effectiveForm = r.form.isNotEmpty ? r.form : _deriveFormFromMatches(r.team);
 
                         return InkWell(
                           borderRadius: BorderRadius.circular(14),
-                          onTap: () => _openTeamProfile(r),
+                          onTap: () => _openTeamProfile(r, effectiveForm),
                           child: Container(
                             margin: const EdgeInsets.only(bottom: 8),
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
@@ -676,19 +872,42 @@ class _StandingsTabState extends State<StandingsTab> {
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
-                                    SizedBox(width: 24, child: Text('${r.played}', textAlign: TextAlign.center, style: TextStyle(color: p.textSecondary, fontSize: 11.5))),
-                                    SizedBox(width: 58, child: Text(wdlText, textAlign: TextAlign.center, style: TextStyle(color: p.textSecondary, fontSize: 11))),
-                                    SizedBox(width: 44, child: Text(goalsText, textAlign: TextAlign.center, style: TextStyle(color: p.textSecondary, fontSize: 11))),
-                                    SizedBox(width: 34, child: Text(r.gd > 0 ? '+${r.gd}' : '${r.gd}', textAlign: TextAlign.center, style: TextStyle(color: p.textSecondary, fontSize: 11.5))),
-                                    SizedBox(width: 32, child: Text('${r.points}', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w900, color: p.primaryAccent, fontSize: 13))),
+                                    SizedBox(
+                                      width: 24,
+                                      child: Text('${r.played}', textAlign: TextAlign.center, style: TextStyle(color: p.textSecondary, fontSize: 11.5)),
+                                    ),
+                                    SizedBox(
+                                      width: 58,
+                                      child: Text(wdlText, textAlign: TextAlign.center, style: TextStyle(color: p.textSecondary, fontSize: 11)),
+                                    ),
+                                    SizedBox(
+                                      width: 44,
+                                      child: Text(goalsText, textAlign: TextAlign.center, style: TextStyle(color: p.textSecondary, fontSize: 11)),
+                                    ),
+                                    SizedBox(
+                                      width: 34,
+                                      child: Text(
+                                        r.gd > 0 ? '+${r.gd}' : '${r.gd}',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(color: p.textSecondary, fontSize: 11.5),
+                                      ),
+                                    ),
+                                    SizedBox(
+                                      width: 32,
+                                      child: Text(
+                                        '${r.points}',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(fontWeight: FontWeight.w900, color: p.primaryAccent, fontSize: 13),
+                                      ),
+                                    ),
                                   ],
                                 ),
-                                if (r.form.isNotEmpty) ...[
+                                if (effectiveForm.isNotEmpty) ...[
                                   const SizedBox(height: 6),
                                   Row(
                                     children: [
                                       const SizedBox(width: 30),
-                                      Row(children: r.form.map(_miniFormDot).toList()),
+                                      Row(children: effectiveForm.map(_miniFormDot).toList()),
                                       const Spacer(),
                                       Text('Profil ›', style: TextStyle(fontSize: 10, color: p.textMuted)),
                                     ],
@@ -743,7 +962,10 @@ class _StandingsTabState extends State<StandingsTab> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(sc.player, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: p.textPrimary)),
+                              Text(
+                                sc.player,
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: p.textPrimary),
+                              ),
                               Text(sc.team, style: TextStyle(fontSize: 11, color: p.textSecondary)),
                             ],
                           ),
@@ -754,7 +976,10 @@ class _StandingsTabState extends State<StandingsTab> {
                             color: p.primaryAccent.withAlpha(20),
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: Text('⚽ ${sc.goals}', style: TextStyle(fontWeight: FontWeight.w900, color: p.primaryAccent, fontSize: 12)),
+                          child: Text(
+                            '⚽ ${sc.goals}',
+                            style: TextStyle(fontWeight: FontWeight.w900, color: p.primaryAccent, fontSize: 12),
+                          ),
                         ),
                         const SizedBox(width: 8),
                         Text('🅰️ ${sc.assists}', style: TextStyle(fontSize: 12, color: p.textSecondary)),
