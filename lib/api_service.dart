@@ -896,6 +896,61 @@ final Map<String, List<TopScorerRow>> sampleTopScorers = {
   ],
 };
 
+/// Egy bajnokság azonosítási szabályai (a StatPal /leagues lista téves találatai ellen).
+class _LeagueSpec {
+  final List<String> names;
+  final List<String> countries;
+  final List<String> teamHints;
+  const _LeagueSpec({
+    required this.names,
+    required this.countries,
+    required this.teamHints,
+  });
+}
+
+const Map<String, _LeagueSpec> _leagueSpecs = {
+  'Premier League': _LeagueSpec(
+    names: ['premier league', 'english premier league'],
+    countries: ['england'],
+    teamHints: ['arsenal', 'chelsea', 'liverpool', 'manchester city', 'man city', 'manchester united', 'man united', 'man utd', 'tottenham', 'spurs', 'newcastle', 'aston villa', 'everton', 'brighton', 'west ham', 'fulham', 'brentford', 'crystal palace', 'wolves', 'wolverhampton', 'nottingham', 'bournemouth', 'leeds', 'sunderland', 'burnley'],
+  ),
+  'La Liga': _LeagueSpec(
+    names: ['la liga', 'laliga', 'primera division', 'laliga ea sports', 'la liga ea sports'],
+    countries: ['spain'],
+    teamHints: ['real madrid', 'barcelona', 'atletico', 'sevilla', 'valencia', 'villarreal', 'athletic', 'real sociedad', 'betis', 'celta', 'getafe', 'osasuna', 'girona', 'mallorca', 'espanyol', 'alaves', 'rayo'],
+  ),
+  'Serie A': _LeagueSpec(
+    names: ['serie a', 'serie a tim', 'serie a enilive'],
+    countries: ['italy'],
+    teamHints: ['juventus', 'inter', 'milan', 'napoli', 'roma', 'lazio', 'atalanta', 'fiorentina', 'torino', 'bologna', 'genoa', 'udinese', 'sassuolo', 'cagliari', 'lecce', 'parma', 'como', 'verona'],
+  ),
+  'Bundesliga': _LeagueSpec(
+    names: ['bundesliga', '1. bundesliga', '1 bundesliga'],
+    countries: ['germany'],
+    teamHints: ['bayern', 'dortmund', 'leverkusen', 'leipzig', 'frankfurt', 'stuttgart', 'freiburg', 'wolfsburg', 'monchengladbach', 'gladbach', 'mainz', 'hoffenheim', 'werder', 'bremen', 'augsburg', 'union berlin', 'heidenheim', 'koln', 'cologne', 'hamburg', 'pauli'],
+  ),
+  'Ligue 1': _LeagueSpec(
+    names: ['ligue 1', 'ligue 1 uber eats', "ligue 1 mcdonald's", 'ligue 1 mcdonalds'],
+    countries: ['france'],
+    teamHints: ['paris', 'psg', 'marseille', 'lyon', 'monaco', 'lille', 'nice', 'rennes', 'lens', 'nantes', 'strasbourg', 'toulouse', 'brest', 'reims', 'auxerre', 'angers', 'metz', 'lorient'],
+  ),
+  'NB I': _LeagueSpec(
+    names: ['nb i', 'nb 1', 'otp bank liga', 'nemzeti bajnoksag i', 'nemzeti bajnoksag'],
+    countries: ['hungary'],
+    teamHints: ['ferencvaros', 'paks', 'debrecen', 'gyor', 'ujpest', 'puskas', 'mtk', 'kisvarda', 'zalaegerszegi', 'diosgyor', 'nyiregyhaza', 'fehervar', 'kecskemet', 'videoton', 'honved'],
+  ),
+  'Bajnokok Ligája': _LeagueSpec(
+    names: ['uefa champions league', 'champions league'],
+    countries: ['europe', 'international', 'world', 'uefa'],
+    teamHints: ['real madrid', 'barcelona', 'bayern', 'manchester city', 'paris', 'liverpool', 'arsenal', 'inter', 'juventus', 'dortmund', 'atletico', 'chelsea', 'milan', 'napoli', 'benfica', 'psv', 'ajax', 'tottenham', 'newcastle', 'leverkusen', 'porto', 'sporting', 'celtic', 'club brugge', 'galatasaray', 'atalanta'],
+  ),
+  'Championship': _LeagueSpec(
+    names: ['championship', 'efl championship', 'sky bet championship'],
+    countries: ['england'],
+    teamHints: ['leeds', 'sunderland', 'burnley', 'sheffield', 'leicester', 'middlesbrough', 'norwich', 'coventry', 'watford', 'bristol city', 'millwall', 'swansea', 'west brom', 'stoke', 'blackburn', 'preston', 'hull', 'derby', 'qpr', 'queens park', 'portsmouth', 'oxford', 'plymouth', 'cardiff', 'luton', 'birmingham', 'wrexham', 'southampton', 'ipswich', 'charlton'],
+  ),
+};
+
 class SportsApiService {
   SportsApiService._();
 
@@ -915,6 +970,10 @@ class SportsApiService {
   };
 
   static final Map<String, String> _resolvedLeagueIds = {};
+  /// Bajnokságonként a /leagues listából talált, szigorúan szűrt jelöltek (rangsorolva)
+  static final Map<String, List<String>> _leagueCandidateIds = {};
+  /// Már ellenőrzött (csapatnevekkel igazolt) azonosítók
+  static final Map<String, String> _verifiedLeagueIds = {};
 
   static Map<String, String> get statpalLeagueSlugs => {
         ...statpalLeagueIds,
@@ -1246,9 +1305,63 @@ class SportsApiService {
     return mapped;
   }
 
-  /// Liga ID-k feloldása a V2 /leagues listából (név egyezés)
+  static String _norm(String input) {
+    var t = input.toLowerCase();
+    const map = {
+      'á': 'a', 'à': 'a', 'â': 'a', 'ä': 'a', 'ã': 'a', 'å': 'a',
+      'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
+      'í': 'i', 'ì': 'i', 'î': 'i', 'ï': 'i',
+      'ó': 'o', 'ò': 'o', 'ô': 'o', 'ö': 'o', 'õ': 'o', 'ő': 'o', 'ø': 'o',
+      'ú': 'u', 'ù': 'u', 'û': 'u', 'ü': 'u', 'ű': 'u',
+      'ç': 'c', 'ñ': 'n', 'š': 's', 'ž': 'z', 'č': 'c', 'ł': 'l', 'ć': 'c',
+    };
+    final sb = StringBuffer();
+    for (final ch in t.split('')) {
+      sb.write(map[ch] ?? ch);
+    }
+    t = sb.toString();
+    return t.replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  /// 0 = biztos találat (név + ország), 1 = név egyezik, de az ország ismeretlen, -1 = nem jó
+  static int _leagueMatchRank(_LeagueSpec spec, String rawName, String rawCountry) {
+    var name = _norm(rawName);
+    var country = _norm(rawCountry);
+    if (country.isEmpty && name.contains(':')) {
+      final parts = name.split(':');
+      country = parts.first.trim();
+      name = parts.sublist(1).join(':').trim();
+    }
+    if (name.isEmpty) return -1;
+
+    var nameOk = false;
+    for (final alias in spec.names) {
+      if (name == alias) {
+        nameOk = true;
+        break;
+      }
+      if (name.startsWith('$alias ')) {
+        final rest = name.substring(alias.length).trim();
+        final bad = RegExp(r'\d|\bii\b|women|femin|frauen|youth|junior|reserve|\bu\d|cup|qualif|play')
+            .hasMatch(rest);
+        if (!bad) {
+          nameOk = true;
+          break;
+        }
+      }
+    }
+    if (!nameOk) return -1;
+
+    if (country.isEmpty) return 1;
+    for (final c in spec.countries) {
+      if (country == c || country.contains(c)) return 0;
+    }
+    return -1;
+  }
+
+  /// Liga ID-k feloldása a V2 /leagues listából (név + ország alapján, szigorúan)
   static Future<void> _ensureLeagueIdsResolved({bool force = false}) async {
-    if (!force && _resolvedLeagueIds.isNotEmpty) return;
+    if (!force && _leagueCandidateIds.isNotEmpty) return;
     if (!ApiConfig.hasValidKey) return;
     try {
       await ApiCache.recordNetworkRequest();
@@ -1260,37 +1373,82 @@ class SportsApiService {
       final list = root is Map && root['league'] != null
           ? (root['league'] is List ? root['league'] as List : [root['league']])
           : (root is List ? root : const []);
+
+      final ranked = <String, List<MapEntry<int, String>>>{};
       for (final item in list) {
         if (item is! Map) continue;
-        final id = (item['id'] ?? '').toString().trim();
-        final name = (item['name'] ?? '').toString().trim();
+        final id = (item['id'] ?? item['league_id'] ?? '').toString().trim();
+        final name = (item['name'] ?? item['league_name'] ?? '').toString().trim();
         if (id.isEmpty || name.isEmpty) continue;
-        final lower = name.toLowerCase();
-        for (final wanted in statpalLeagueIds.keys) {
-          final w = wanted.toLowerCase();
-          if (lower == w || lower.contains(w) || w.contains(lower)) {
-            _resolvedLeagueIds[wanted] = id;
+
+        final countryRaw = item['country'] ?? item['country_name'] ?? item['category'];
+        final country = countryRaw is Map
+            ? (countryRaw['name'] ?? '').toString()
+            : (countryRaw ?? '').toString();
+
+        for (final entry in _leagueSpecs.entries) {
+          final rank = _leagueMatchRank(entry.value, name, country);
+          if (rank < 0) continue;
+          final bucket = ranked.putIfAbsent(entry.key, () => []);
+          if (!bucket.any((e) => e.value == id)) {
+            bucket.add(MapEntry(rank, id));
           }
-        }
-        if (lower.contains('premier league') && lower.contains('england')) {
-          _resolvedLeagueIds['Premier League'] = id;
-        } else if (lower.contains('la liga') || lower.contains('primera division')) {
-          _resolvedLeagueIds['La Liga'] = id;
-        } else if (lower.contains('serie a') && lower.contains('italy')) {
-          _resolvedLeagueIds['Serie A'] = id;
-        } else if (lower == 'bundesliga' || lower.contains('bundesliga 1')) {
-          _resolvedLeagueIds['Bundesliga'] = id;
-        } else if (lower.contains('ligue 1')) {
-          _resolvedLeagueIds['Ligue 1'] = id;
-        } else if (lower.contains('nb i') || lower.contains('otp bank liga') || lower.contains('hungary')) {
-          if (lower.contains('nb') || lower.contains('otp') || lower.contains('magyar')) {
-            _resolvedLeagueIds['NB I'] = id;
-          }
-        } else if (lower.contains('champions league')) {
-          _resolvedLeagueIds['Bajnokok Ligája'] = id;
         }
       }
+
+      _leagueCandidateIds.clear();
+      for (final entry in ranked.entries) {
+        final sorted = [...entry.value]..sort((a, b) => a.key.compareTo(b.key));
+        final ids = sorted.map((e) => e.value).toList();
+        _leagueCandidateIds[entry.key] = ids;
+        if (ids.isNotEmpty) _resolvedLeagueIds[entry.key] = ids.first;
+      }
     } catch (_) {}
+  }
+
+  /// Sorrendben kipróbálandó liga azonosítók: ellenőrzött → /leagues találatok → beégetett tartalék
+  static List<String> _candidateIdsFor(String leagueName) {
+    final ids = <String>[];
+    void add(String? id) {
+      if (id == null || id.isEmpty || ids.contains(id)) return;
+      ids.add(id);
+    }
+
+    add(_verifiedLeagueIds[leagueName]);
+    for (final id in _leagueCandidateIds[leagueName] ?? const <String>[]) {
+      add(id);
+    }
+    add(statpalLeagueIds[leagueName]);
+    return ids.take(6).toList();
+  }
+
+  /// Igaz, ha a tabella csapatnevei tényleg az adott bajnoksághoz tartoznak.
+  static bool _standingsLookValid(String leagueName, List<Map<String, dynamic>> rawRows) {
+    final spec = _leagueSpecs[leagueName];
+    if (spec == null) return true;
+    var hits = 0;
+    for (final m in rawRows) {
+      final teamObj = m['team'] is Map ? Map<String, dynamic>.from(m['team'] as Map) : null;
+      final raw = (m['name'] ?? m['team_name'] ?? m['teamName'] ?? teamObj?['name'] ?? teamObj?['team_name'] ?? m['team'] ?? '')
+          .toString();
+      final n = _norm(raw);
+      if (n.isEmpty) continue;
+      if (spec.teamHints.any((h) => n.contains(h))) hits++;
+      if (hits >= 3) return true;
+    }
+    return false;
+  }
+
+  static String _standingZone(String leagueName, int pos, int total) {
+    if (leagueName == 'Bajnokok Ligája') {
+      if (pos <= 8) return 'ucl';
+      if (pos <= 24) return 'uel';
+      return 'rel';
+    }
+    if (pos <= 4) return 'ucl';
+    if (pos <= 6) return 'uel';
+    if (total >= 10 && pos > total - 3) return 'rel';
+    return 'none';
   }
 
   static String formatClock(DateTime dt) {
@@ -1446,9 +1604,7 @@ class SportsApiService {
     bool forceRefresh = false,
   }) async {
     final now = DateTime.now();
-    final fallbackId = statpalLeagueIds['Premier League'] ?? '1007';
-    final initialId = statpalLeagueIds[leagueName] ?? fallbackId;
-    final cacheKey = 'sp_standings_${leagueName}_${initialId}_$venueFilter';
+    final cacheKey = 'sp_standings_v3_${leagueName}_$venueFilter';
 
     if (!forceRefresh) {
       final cached = await ApiCache.get(cacheKey, customTtlMinutes: 15);
@@ -1466,43 +1622,65 @@ class SportsApiService {
     }
 
     await _ensureLeagueIdsResolved(force: forceRefresh);
-    final resolvedId = _resolvedLeagueIds[leagueName] ??
-        statpalLeagueIds[leagueName] ??
-        initialId;
-
-    final candidateUris = <Uri>[
-      for (final season in _seasonCandidates())
-        Uri.parse('$_statpalBaseUrl/leagues/$resolvedId/standings?season=$season&access_key=${ApiConfig.activeKey}'),
-      Uri.parse('$_statpalBaseUrl/leagues/$resolvedId/standings?access_key=${ApiConfig.activeKey}'),
-    ];
+    if (forceRefresh) _verifiedLeagueIds.remove(leagueName);
+    final candidateIds = _candidateIdsFor(leagueName);
 
     dynamic decoded;
     Object? lastError;
-    for (final uri in candidateUris) {
-      try {
-        await ApiCache.recordNetworkRequest();
-        final res = await http.get(uri).timeout(const Duration(seconds: 15));
-        if (res.statusCode == 200) {
-          final candidateDecoded = jsonDecode(res.body);
-          final candidateRows = _extractStandingsRows(candidateDecoded);
-          if (candidateRows.isNotEmpty) {
-            decoded = candidateDecoded;
-            break;
+    var rejectedWrongLeague = false;
+
+    for (final leagueId in candidateIds) {
+      final uris = <Uri>[
+        for (final season in _seasonCandidates())
+          Uri.parse('$_statpalBaseUrl/leagues/$leagueId/standings?season=$season&access_key=${ApiConfig.activeKey}'),
+        Uri.parse('$_statpalBaseUrl/leagues/$leagueId/standings?access_key=${ApiConfig.activeKey}'),
+      ];
+
+      dynamic found;
+      for (final uri in uris) {
+        try {
+          await ApiCache.recordNetworkRequest();
+          final res = await http.get(uri).timeout(const Duration(seconds: 15));
+          if (res.statusCode == 200) {
+            final candidateDecoded = jsonDecode(res.body);
+            if (_extractStandingsRows(candidateDecoded).isNotEmpty) {
+              found = candidateDecoded;
+              break;
+            }
+          } else if (res.statusCode == 401 || res.statusCode == 403) {
+            throw Exception('Érvénytelen StatPal access_key (HTTP ${res.statusCode})');
+          } else {
+            lastError = Exception('HTTP ${res.statusCode}');
           }
-          decoded ??= candidateDecoded;
-        } else if (res.statusCode == 401 || res.statusCode == 403) {
-          throw Exception('Érvénytelen StatPal access_key (HTTP ${res.statusCode})');
-        } else {
-          lastError = Exception('HTTP ${res.statusCode}');
+        } catch (e) {
+          if (e.toString().contains('access_key')) rethrow;
+          lastError = e;
         }
-      } catch (e) {
-        if (e.toString().contains('access_key')) rethrow;
-        lastError = e;
       }
+
+      if (found == null) continue;
+
+      if (_standingsLookValid(leagueName, _extractStandingsRows(found))) {
+        decoded = found;
+        _verifiedLeagueIds[leagueName] = leagueId;
+        break;
+      }
+      // Téves bajnokság (pl. azonos nevű másik ország ligája) – következő jelölt
+      rejectedWrongLeague = true;
     }
 
-    if (decoded == null && lastError != null) {
-      throw lastError;
+    if (decoded == null) {
+      if (!rejectedWrongLeague && lastError != null) {
+        throw lastError;
+      }
+      return FetchResult(
+        data: const <StandingRow>[],
+        fromCache: false,
+        fetchedAt: now,
+        note: rejectedWrongLeague
+            ? 'A StatPal ehhez a bajnoksághoz most csak téves (másik ország) tabellát adott, ezért nem jelenítem meg.'
+            : null,
+      );
     }
 
     final rawRows = _extractStandingsRows(decoded);
@@ -1632,14 +1810,7 @@ class SportsApiService {
     for (var i = 0; i < totalRows; i++) {
       final r = rows[i];
       final displayPos = venueFilter == 'all' ? r.pos : (i + 1);
-      String zone = 'none';
-      if (displayPos <= 4) {
-        zone = 'ucl';
-      } else if (displayPos <= 6) {
-        zone = 'uel';
-      } else if (totalRows >= 10 && displayPos > totalRows - 3) {
-        zone = 'rel';
-      }
+      final zone = _standingZone(leagueName, displayPos, totalRows);
       zonedRows.add(StandingRow(
         pos: displayPos,
         team: r.team,
