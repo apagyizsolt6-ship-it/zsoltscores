@@ -15,15 +15,19 @@ jobs:
 
       - run: flutter create . --platforms=android
 
-      - name: Internet engedély hozzáadása
-        run: sed -i 's/<application/<uses-permission android:name="android.permission.INTERNET"\/>\n    <application/' android/app/src/main/AndroidManifest.xml
+      - name: Engedélyek hozzáadása (Internet + Értesítések)
+        run: |
+          # INTERNET
+          sed -i 's/<application/<uses-permission android:name="android.permission.INTERNET"\/>\n    <application/' android/app/src/main/AndroidManifest.xml
+          # POST_NOTIFICATIONS (Android 13+)
+          sed -i 's/<application/<uses-permission android:name="android.permission.POST_NOTIFICATIONS"\/>\n    <application/' android/app/src/main/AndroidManifest.xml
 
       - run: flutter pub get
 
       - name: Gradle tárolók javítása
         run: |
-          mkdir -p ~/.gradle/init.d
-          cat << 'EOF' > ~/.gradle/init.d/repos.gradle
+          mkdir -p \~/.gradle/init.d
+          cat << 'EOF' > \~/.gradle/init.d/repos.gradle
           beforeSettings { settings ->
               settings.pluginManagement {
                   repositories {
