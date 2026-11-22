@@ -268,12 +268,14 @@ class FetchResult<T> {
   final bool fromCache;
   final DateTime fetchedAt;
   final String? note;
+  final String? info;
 
   const FetchResult({
     required this.data,
     required this.fromCache,
     required this.fetchedAt,
     this.note,
+    this.info,
   });
 }
 
@@ -896,6 +898,14 @@ final Map<String, List<TopScorerRow>> sampleTopScorers = {
   ],
 };
 
+typedef _StandingsMeta = ({
+  String country,
+  String league,
+  String season,
+  String updated,
+  bool? isCurrent,
+});
+
 /// Egy bajnokság azonosítási szabályai (a StatPal /leagues lista téves találatai ellen).
 class _LeagueSpec {
   final List<String> names;
@@ -912,7 +922,7 @@ const Map<String, _LeagueSpec> _leagueSpecs = {
   'Premier League': _LeagueSpec(
     names: ['premier league', 'english premier league'],
     countries: ['england'],
-    teamHints: ['arsenal', 'chelsea', 'liverpool', 'manchester city', 'man city', 'manchester united', 'man united', 'man utd', 'tottenham', 'spurs', 'newcastle', 'aston villa', 'everton', 'brighton', 'west ham', 'fulham', 'brentford', 'crystal palace', 'wolves', 'wolverhampton', 'nottingham', 'bournemouth', 'leeds', 'sunderland', 'burnley'],
+    teamHints: ['arsenal', 'chelsea', 'liverpool', 'manchester city', 'man city', 'manchester united', 'man united', 'man utd', 'tottenham', 'spurs', 'newcastle', 'aston villa', 'everton', 'brighton', 'west ham', 'fulham', 'brentford', 'crystal palace', 'wolves', 'wolverhampton', 'nottingham', 'bournemouth'],
   ),
   'La Liga': _LeagueSpec(
     names: ['la liga', 'laliga', 'primera division', 'laliga ea sports', 'la liga ea sports'],
@@ -1293,7 +1303,8 @@ class SportsApiService {
     }
 
     final mapped = <String>[];
-    for (final t in tokens.take(5)) {
+    final recent = tokens.length > 5 ? tokens.sublist(tokens.length - 5) : tokens;
+    for (final t in recent) {
       if (t == 'W' || t == 'GY' || t == 'G' || t == 'WIN') {
         mapped.add('GY');
       } else if (t == 'D' || t == 'DRAW') {
@@ -1359,14 +1370,53 @@ class SportsApiService {
     return -1;
   }
 
+  /// StatPal GET: egyetlen újrapróbálás 429 / 502 / 503 esetén (a doksi backoffot javasol)
+  static Future<http.Response> _statpalGet(Uri uri, {Duration timeout = const Duration(seconds: 15)}) async {
+    await ApiCache.recordNetworkRequest();
+    var res = await http.get(uri).timeout(timeout);
+    if (res.statusCode == 429 || res.statusCode == 502 || res.statusCode == 503) {
+      await Future.delayed(const Duration(milliseconds: 1500));
+      await ApiCache.recordNetworkRequest();
+      res = await http.get(uri).timeout(timeout);
+    }
+    return res;
+  }
+
+  static Future<void> _loadVerifiedIds() async {
+    if (_verifiedLeagueIds.isNotEmpty) return;
+    final cached = await ApiCache.get('verified_league_ids_v1', customTtlMinutes: 10080);
+    if (cached is Map) {
+      cached.forEach((k, v) {
+        if (v != null) _verifiedLeagueIds[k.toString()] = v.toString();
+      });
+    }
+  }
+
+  static Future<void> _saveVerifiedIds() async {
+    await ApiCache.set('verified_league_ids_v1', Map<String, String>.from(_verifiedLeagueIds));
+  }
+
   /// Liga ID-k feloldása a V2 /leagues listából (név + ország alapján, szigorúan)
   static Future<void> _ensureLeagueIdsResolved({bool force = false}) async {
     if (!force && _leagueCandidateIds.isNotEmpty) return;
     if (!ApiConfig.hasValidKey) return;
+    if (!force) {
+      final cachedCandidates = await ApiCache.get('league_candidates_v1', customTtlMinutes: 1440);
+      if (cachedCandidates is Map) {
+        _leagueCandidateIds.clear();
+        cachedCandidates.forEach((k, v) {
+          if (v is List) {
+            final ids = v.map((e) => e.toString()).toList();
+            _leagueCandidateIds[k.toString()] = ids;
+            if (ids.isNotEmpty) _resolvedLeagueIds[k.toString()] = ids.first;
+          }
+        });
+        if (_leagueCandidateIds.isNotEmpty) return;
+      }
+    }
     try {
-      await ApiCache.recordNetworkRequest();
       final uri = Uri.parse('$_statpalBaseUrl/leagues?access_key=${ApiConfig.activeKey}');
-      final res = await http.get(uri).timeout(const Duration(seconds: 20));
+      final res = await _statpalGet(uri, timeout: const Duration(seconds: 20));
       if (res.statusCode != 200) return;
       final decoded = jsonDecode(res.body);
       final root = decoded is Map ? (decoded['leagues'] ?? decoded) : decoded;
@@ -1403,6 +1453,9 @@ class SportsApiService {
         _leagueCandidateIds[entry.key] = ids;
         if (ids.isNotEmpty) _resolvedLeagueIds[entry.key] = ids.first;
       }
+      if (_leagueCandidateIds.isNotEmpty) {
+        await ApiCache.set('league_candidates_v1', _leagueCandidateIds);
+      }
     } catch (_) {}
   }
 
@@ -1422,10 +1475,23 @@ class SportsApiService {
     return ids.take(6).toList();
   }
 
-  /// Igaz, ha a tabella csapatnevei tényleg az adott bajnoksághoz tartoznak.
-  static bool _standingsLookValid(String leagueName, List<Map<String, dynamic>> rawRows) {
+  /// Igaz, ha a válasz tényleg az adott bajnoksághoz tartozik (ország + liganév, vagy csapatnevek).
+  static bool _standingsLookValid(
+    String leagueName,
+    List<Map<String, dynamic>> rawRows,
+    _StandingsMeta meta,
+  ) {
     final spec = _leagueSpecs[leagueName];
     if (spec == null) return true;
+
+    final c = _norm(meta.country);
+    final countryOk = c.isNotEmpty && spec.countries.any((x) => c == x || c.contains(x));
+    final lg = _norm(meta.league);
+    if (countryOk && lg.isNotEmpty) {
+      // Ugyanabból az országból több liga is lehet (Premier League / Championship): a név dönt.
+      return spec.names.any((alias) => lg == alias || lg.startsWith('$alias '));
+    }
+
     var hits = 0;
     for (final m in rawRows) {
       final teamObj = m['team'] is Map ? Map<String, dynamic>.from(m['team'] as Map) : null;
@@ -1437,6 +1503,79 @@ class SportsApiService {
       if (hits >= 3) return true;
     }
     return false;
+  }
+
+  /// A StatPal "description.value" (pl. "Promotion - Premier League") → app zóna
+  static String? _zoneFromDescription(String raw) {
+    final d = _norm(raw);
+    if (d.isEmpty) return null;
+    if (d.contains('relegat') || d.contains('eliminat')) return 'rel';
+    if (d.contains('play') || d.contains('qualif') || d.contains('europa') || d.contains('conference')) {
+      return 'uel';
+    }
+    if (d.contains('champions league') || d.contains('promotion') || d.contains('round of 16') || d.contains('title')) {
+      return 'ucl';
+    }
+    return null;
+  }
+
+  static String _rowDescription(Map<String, dynamic> m) {
+    final d = m['description'];
+    if (d is Map) return (d['value'] ?? '').toString();
+    return (d ?? '').toString();
+  }
+
+  static String _standingsInfoLine(_StandingsMeta meta) {
+    final parts = <String>[];
+    if (meta.season.trim().isNotEmpty) parts.add(meta.season.trim());
+    final u = meta.updated.trim();
+    if (u.isNotEmpty) parts.add('frissítve: ${u.length > 16 ? u.substring(0, 16) : u}');
+    if (meta.isCurrent == false) parts.add('korábbi szezon');
+    return parts.join(' • ');
+  }
+
+  static Map<String, dynamic>? _pickTournament(dynamic raw) {
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    if (raw is List) {
+      Map<String, dynamic>? first;
+      for (final item in raw) {
+        if (item is! Map) continue;
+        final m = Map<String, dynamic>.from(item);
+        if (m['team'] == null) continue;
+        first ??= m;
+        final cur = (m['is_current'] ?? '').toString().toLowerCase();
+        if (cur == 'true' || cur == '1') return m;
+      }
+      return first;
+    }
+    return null;
+  }
+
+  static _StandingsMeta _extractStandingsMeta(dynamic decoded) {
+    var country = '';
+    var league = '';
+    var season = '';
+    var updated = '';
+    bool? isCurrent;
+    if (decoded is Map) {
+      final root = decoded['standings'] ?? decoded['data'] ?? decoded;
+      if (root is Map) {
+        country = (root['country'] ?? '').toString();
+        updated = (root['updated'] ?? '').toString();
+        final t = _pickTournament(root['tournament']);
+        if (t != null) {
+          league = (t['league'] ?? t['name'] ?? '').toString();
+          season = (t['season'] ?? '').toString();
+          final cur = (t['is_current'] ?? '').toString().toLowerCase();
+          if (cur == 'true' || cur == '1') {
+            isCurrent = true;
+          } else if (cur == 'false' || cur == '0') {
+            isCurrent = false;
+          }
+        }
+      }
+    }
+    return (country: country, league: league, season: season, updated: updated, isCurrent: isCurrent);
   }
 
   static String _standingZone(String leagueName, int pos, int total) {
@@ -1604,15 +1743,20 @@ class SportsApiService {
     bool forceRefresh = false,
   }) async {
     final now = DateTime.now();
-    final cacheKey = 'sp_standings_v3_${leagueName}_$venueFilter';
+    final cacheKey = 'sp_standings_v4_${leagueName}_$venueFilter';
 
     if (!forceRefresh) {
       final cached = await ApiCache.get(cacheKey, customTtlMinutes: 15);
-      if (cached is List) {
-        final rows = cached
+      if (cached is Map && cached['rows'] is List) {
+        final rows = (cached['rows'] as List)
             .map((e) => StandingRow.fromJson(Map<String, dynamic>.from(e as Map)))
             .toList();
-        return FetchResult(data: rows, fromCache: true, fetchedAt: now);
+        return FetchResult(
+          data: rows,
+          fromCache: true,
+          fetchedAt: now,
+          info: cached['info']?.toString(),
+        );
       }
     }
 
@@ -1621,55 +1765,91 @@ class SportsApiService {
       return FetchResult(data: sample, fromCache: false, fetchedAt: now);
     }
 
-    await _ensureLeagueIdsResolved(force: forceRefresh);
-    if (forceRefresh) _verifiedLeagueIds.remove(leagueName);
+    await _ensureLeagueIdsResolved();
+    await _loadVerifiedIds();
     final candidateIds = _candidateIdsFor(leagueName);
 
-    dynamic decoded;
+    // A nyers tabella minden szűrőnél (összes / hazai / vendég) közös: egyetlen kérés elég.
+    final rawKey = 'raw_standings_v2_$leagueName';
+    var rawRows = <Map<String, dynamic>>[];
+    var info = '';
+    var rawFromNetwork = false;
+    if (!forceRefresh) {
+      final cachedRaw = await ApiCache.get(rawKey, customTtlMinutes: 15);
+      if (cachedRaw is Map && cachedRaw['rows'] is List && (cachedRaw['rows'] as List).isNotEmpty) {
+        rawRows = (cachedRaw['rows'] as List)
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+        info = (cachedRaw['info'] ?? '').toString();
+      }
+    }
+
     Object? lastError;
     var rejectedWrongLeague = false;
 
-    for (final leagueId in candidateIds) {
-      final uris = <Uri>[
-        for (final season in _seasonCandidates())
-          Uri.parse('$_statpalBaseUrl/leagues/$leagueId/standings?season=$season&access_key=${ApiConfig.activeKey}'),
-        Uri.parse('$_statpalBaseUrl/leagues/$leagueId/standings?access_key=${ApiConfig.activeKey}'),
-      ];
+    if (rawRows.isEmpty) {
+      var budget = 8; // a StatPal nem-élő végpontjai óránként csak ~10 kérést bírnak
+      final accessKey = ApiConfig.activeKey;
+      outer:
+      for (final leagueId in candidateIds) {
+        final base = '$_statpalBaseUrl/leagues/$leagueId/standings';
+        final uris = <Uri>[
+          Uri.parse('$base?access_key=$accessKey'),
+          for (final season in _seasonCandidates().take(2))
+            Uri.parse('$base?season=$season&access_key=$accessKey'),
+        ];
 
-      dynamic found;
-      for (final uri in uris) {
-        try {
-          await ApiCache.recordNetworkRequest();
-          final res = await http.get(uri).timeout(const Duration(seconds: 15));
-          if (res.statusCode == 200) {
-            final candidateDecoded = jsonDecode(res.body);
-            if (_extractStandingsRows(candidateDecoded).isNotEmpty) {
-              found = candidateDecoded;
-              break;
+        var found = <Map<String, dynamic>>[];
+        dynamic foundDecoded;
+        for (final uri in uris) {
+          if (budget <= 0) break outer;
+          budget--;
+          try {
+            final res = await _statpalGet(uri);
+            if (res.statusCode == 200) {
+              if (res.body.contains('invalid-request')) {
+                lastError = Exception('StatPal: invalid-request (liga $leagueId)');
+                continue;
+              }
+              final body = jsonDecode(res.body);
+              final parsed = _extractStandingsRows(body);
+              if (parsed.isNotEmpty) {
+                found = parsed;
+                foundDecoded = body;
+                break;
+              }
+            } else if (res.statusCode == 401 || res.statusCode == 403) {
+              throw Exception('Érvénytelen StatPal access_key (HTTP ${res.statusCode})');
+            } else if (res.statusCode == 429) {
+              lastError = Exception('StatPal kérés-limit (HTTP 429) – próbáld újra pár perc múlva');
+              break outer;
+            } else {
+              lastError = Exception('HTTP ${res.statusCode}');
             }
-          } else if (res.statusCode == 401 || res.statusCode == 403) {
-            throw Exception('Érvénytelen StatPal access_key (HTTP ${res.statusCode})');
-          } else {
-            lastError = Exception('HTTP ${res.statusCode}');
+          } catch (e) {
+            if (e.toString().contains('access_key')) rethrow;
+            lastError = e;
           }
-        } catch (e) {
-          if (e.toString().contains('access_key')) rethrow;
-          lastError = e;
         }
-      }
 
-      if (found == null) continue;
+        if (found.isEmpty) continue;
 
-      if (_standingsLookValid(leagueName, _extractStandingsRows(found))) {
-        decoded = found;
-        _verifiedLeagueIds[leagueName] = leagueId;
-        break;
+        final meta = _extractStandingsMeta(foundDecoded);
+        if (_standingsLookValid(leagueName, found, meta)) {
+          rawRows = found;
+          info = _standingsInfoLine(meta);
+          rawFromNetwork = true;
+          _verifiedLeagueIds[leagueName] = leagueId;
+          await _saveVerifiedIds();
+          break;
+        }
+        // Téves bajnokság (pl. azonos nevű másik ország ligája) – következő jelölt
+        rejectedWrongLeague = true;
       }
-      // Téves bajnokság (pl. azonos nevű másik ország ligája) – következő jelölt
-      rejectedWrongLeague = true;
     }
 
-    if (decoded == null) {
+    if (rawRows.isEmpty) {
       if (!rejectedWrongLeague && lastError != null) {
         throw lastError;
       }
@@ -1682,11 +1862,15 @@ class SportsApiService {
             : null,
       );
     }
+    if (rawFromNetwork) {
+      await ApiCache.set(rawKey, {'rows': rawRows, 'info': info});
+    }
 
-    final rawRows = _extractStandingsRows(decoded);
     final rows = <StandingRow>[];
+    final descs = <String>[];
     for (var i = 0; i < rawRows.length; i++) {
       final m = rawRows[i];
+      descs.add(_rowDescription(m));
       final teamObj = m['team'] is Map
           ? Map<String, dynamic>.from(m['team'] as Map)
           : (m['participant'] is Map ? Map<String, dynamic>.from(m['participant'] as Map) : null);
@@ -1806,11 +1990,14 @@ class SportsApiService {
     }
 
     final totalRows = rows.length;
+    final useDescZones = venueFilter == 'all' && descs.any((d) => d.trim().isNotEmpty);
     final zonedRows = <StandingRow>[];
     for (var i = 0; i < totalRows; i++) {
       final r = rows[i];
       final displayPos = venueFilter == 'all' ? r.pos : (i + 1);
-      final zone = _standingZone(leagueName, displayPos, totalRows);
+      final String zone = useDescZones
+          ? (_zoneFromDescription(descs[i]) ?? 'none')
+          : _standingZone(leagueName, displayPos, totalRows);
       zonedRows.add(StandingRow(
         pos: displayPos,
         team: r.team,
@@ -1829,8 +2016,16 @@ class SportsApiService {
       ));
     }
 
-    await ApiCache.set(cacheKey, zonedRows.map((r) => r.toJson()).toList());
-    return FetchResult(data: zonedRows, fromCache: false, fetchedAt: now);
+    await ApiCache.set(cacheKey, {
+      'rows': zonedRows.map((r) => r.toJson()).toList(),
+      'info': info,
+    });
+    return FetchResult(
+      data: zonedRows,
+      fromCache: false,
+      fetchedAt: now,
+      info: info.isEmpty ? null : info,
+    );
   }
 
   static List<MatchData> _extractMatchesFromStatPal(
@@ -1921,8 +2116,8 @@ class SportsApiService {
     }
 
     if (root is Map<String, dynamic>) {
-      final tournament = root['tournament'];
-      if (tournament is Map && tournament['team'] != null) {
+      final tournament = _pickTournament(root['tournament']);
+      if (tournament != null && tournament['team'] != null) {
         addTeams(tournament['team']);
       } else if (root['team'] != null) {
         addTeams(root['team']);
