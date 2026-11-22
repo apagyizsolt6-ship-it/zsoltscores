@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:zsoltscores/api_service.dart';
 import 'package:zsoltscores/screens/match_stats_screen.dart';
 import 'package:zsoltscores/theme/app_theme.dart';
@@ -26,6 +27,8 @@ class LiveAlertEntry {
 class LiveAlertService {
   LiveAlertService._();
 
+  static final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
+  static bool _notificationsReady = false;
   static bool favoriteTeamsOnly = false;
   static final Map<String, int> _lastScores = {};
   static final Map<String, bool> _lastFinishedState = {};
@@ -36,6 +39,33 @@ class LiveAlertService {
 
   static void clearHistory() {
     _history.clear();
+  }
+
+  static Future<void> initNotifications() async {
+    if (_notificationsReady) return;
+    const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const ios = DarwinInitializationSettings();
+    const settings = InitializationSettings(android: android, iOS: ios);
+    await _notifications.initialize(settings);
+    _notificationsReady = true;
+  }
+
+  static Future<void> _showLocalNotification(String title, String body) async {
+    if (!_notificationsReady) return;
+    const android = AndroidNotificationDetails(
+      'zsoltscores_alerts',
+      'Élő riasztások',
+      channelDescription: 'Gólok, piros lapok és meccsvégek',
+      importance: Importance.high,
+      priority: Priority.high,
+    );
+    const details = NotificationDetails(android: android);
+    await _notifications.show(
+      DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      title,
+      body,
+      details,
+    );
   }
 
   static void _recordAlert(LiveAlertEntry entry) {
@@ -52,6 +82,7 @@ class LiveAlertService {
     required Color accent,
     MatchData? match,
   }) {
+    _showLocalNotification(title, subtitle);
     if (!context.mounted) return;
     final p = AppThemeController.instance.palette;
     final messenger = ScaffoldMessenger.maybeOf(context);
