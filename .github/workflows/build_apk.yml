@@ -17,10 +17,41 @@ jobs:
 
       - name: Engedélyek hozzáadása (Internet + Értesítések)
         run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
           # INTERNET
-          sed -i 's/<application/<uses-permission android:name="android.permission.INTERNET"\/>\n    <application/' android/app/src/main/AndroidManifest.xml
+          sed -i 's/<application/<uses-permission android:name="android.permission.INTERNET"\/>\n    <application/' "$MANIFEST"
           # POST_NOTIFICATIONS (Android 13+)
-          sed -i 's/<application/<uses-permission android:name="android.permission.POST_NOTIFICATIONS"\/>\n    <application/' android/app/src/main/AndroidManifest.xml
+          sed -i 's/<application/<uses-permission android:name="android.permission.POST_NOTIFICATIONS"\/>\n    <application/' "$MANIFEST"
+
+      - name: Gradle beállítások (desugaring + compileSdk)
+        run: |
+          # Próbáljuk meg mindkét lehetséges fájlt (build.gradle vagy build.gradle.kts)
+          if [ -f android/app/build.gradle ]; then
+            GRADLE=android/app/build.gradle
+            # compileSdk
+            sed -i 's/compileSdk flutter.compileSdkVersion/compileSdk 35/' "$GRADLE" || true
+            sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 35/' "$GRADLE" || true
+            # Desugaring
+            if ! grep -q "coreLibraryDesugaringEnabled" "$GRADLE"; then
+              sed -i '/compileOptions {/a \        coreLibraryDesugaringEnabled true' "$GRADLE"
+            fi
+            # dependencies blokk végére
+            if ! grep -q "desugar_jdk_libs" "$GRADLE"; then
+              sed -i '/dependencies {/a \    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.4"' "$GRADLE"
+            fi
+          elif [ -f android/app/build.gradle.kts ]; then
+            GRADLE=android/app/build.gradle.kts
+            sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 35/' "$GRADLE" || true
+            if ! grep -q "isCoreLibraryDesugaringEnabled" "$GRADLE"; then
+              sed -i '/compileOptions {/a \        isCoreLibraryDesugaringEnabled = true' "$GRADLE"
+            fi
+            if ! grep -q "desugar_jdk_libs" "$GRADLE"; then
+              sed -i '/dependencies {/a \    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")' "$GRADLE"
+            fi
+          else
+            echo "Nem találtam build.gradle fájlt!"
+            exit 1
+          fi
 
       - run: flutter pub get
 
