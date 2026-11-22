@@ -122,10 +122,23 @@ class FavoritesTab extends StatelessWidget {
                 ? Center(
                     child: Padding(
                       padding: const EdgeInsets.all(24),
-                      child: Text(
-                        'Még nincs kedvenc meccsed erre a napra.\nKoppints a csillag ikonra bármelyik meccsen!',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: p.textMuted, height: 1.5),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.star_border, size: 56, color: p.goldAccent.withAlpha(140)),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Még nincs kedvenc meccsed erre a napra.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: p.textMuted, fontSize: 15, height: 1.4),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Koppints a csillag ikonra bármelyik meccsen a Meccsek fülön!',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: p.textMuted.withAlpha(180), fontSize: 13),
+                          ),
+                        ],
                       ),
                     ),
                   )

@@ -765,9 +765,27 @@ class _MatchesTabState extends State<MatchesTab> {
               onRefresh: widget.onRefresh,
               child: competitionKeys.isEmpty
                   ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
                       children: [
-                        const SizedBox(height: 100),
-                        Center(child: Text('Nincs a szűrésnek megfelelő meccs.', style: TextStyle(color: p.textMuted))),
+                        const SizedBox(height: 80),
+                        Center(
+                          child: Column(
+                            children: [
+                              Icon(Icons.sports_soccer_outlined, size: 56, color: p.textMuted.withAlpha(140)),
+                              const SizedBox(height: 16),
+                              Text(
+                                widget.statusMessage ?? 'Nincs a szűrésnek megfelelő meccs.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: p.textMuted, fontSize: 15),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Húzd le a lista frissítéséhez',
+                                style: TextStyle(color: p.textMuted.withAlpha(160), fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
                     )
                   : ListView.builder(
