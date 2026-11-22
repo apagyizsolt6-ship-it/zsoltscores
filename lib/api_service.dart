@@ -150,11 +150,13 @@ class DisplayPrefs {
   static const _prefAlertGoal = 'zsoltscores_alert_goal';
   static const _prefAlertRed = 'zsoltscores_alert_red';
   static const _prefAlertEnd = 'zsoltscores_alert_end';
+  static const _prefFavMatchIds = 'zsoltscores_fav_match_ids';
 
   static CollapseMode collapseMode = CollapseMode.liveOrPinned;
   static bool autoLiveListRefresh = true;
   static Set<String> pinnedCompetitions = {};
   static List<String> favoriteTeams = [];
+  static Set<String> favoriteMatchIds = {};
   static List<String> recentSearches = [];
   static bool alertOnGoal = true;
   static bool alertOnRedCard = true;
@@ -174,6 +176,7 @@ class DisplayPrefs {
     autoLiveListRefresh = prefs.getBool(_prefAutoLive) ?? true;
     pinnedCompetitions = (prefs.getStringList(_prefPinned) ?? []).toSet();
     favoriteTeams = prefs.getStringList(_prefFavTeams) ?? [];
+    favoriteMatchIds = (prefs.getStringList(_prefFavMatchIds) ?? []).toSet();
     recentSearches = prefs.getStringList(_prefRecentSearch) ?? [];
     alertOnGoal = prefs.getBool(_prefAlertGoal) ?? true;
     alertOnRedCard = prefs.getBool(_prefAlertRed) ?? true;
@@ -229,6 +232,16 @@ class DisplayPrefs {
     final q = teamName.trim().toLowerCase();
     if (q.isEmpty) return false;
     return favoriteTeams.any((f) => q.contains(f.toLowerCase()) || f.toLowerCase().contains(q));
+  }
+
+  static Future<void> toggleFavoriteMatch(String matchId) async {
+    if (favoriteMatchIds.contains(matchId)) {
+      favoriteMatchIds.remove(matchId);
+    } else {
+      favoriteMatchIds.add(matchId);
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_prefFavMatchIds, favoriteMatchIds.toList());
   }
 
   static Future<void> toggleFavoriteTeam(String teamName) async {

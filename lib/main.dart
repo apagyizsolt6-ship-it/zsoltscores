@@ -14,6 +14,7 @@ Future<void> main() async {
   await ApiCache.loadStats();
   await DisplayPrefs.load();
   await AppThemeController.instance.load();
+  await LiveAlertService.initNotifications();
   runApp(const ZsoltScoresApp());
 }
 
@@ -46,7 +47,7 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _selectedIndex = 0;
   int _settingsVersion = 0;
-  final Set<String> _favoriteIds = {'m1', 'm2'};
+  Set<String> get _favoriteIds => DisplayPrefs.favoriteMatchIds;
   List<MatchData> _matches = sampleMatches;
   Map<String, int> _prevScores = {};
   Set<String> _recentlyScoredIds = {};
@@ -149,10 +150,13 @@ class _MainShellState extends State<MainShell> {
         setState(() {
           _isLoading = false;
           _isLiveApiData = false;
-          _loadedFromCache = false;
+          // Keep previous data if we have it (better offline experience)
+          if (_matches.isEmpty || _matches == sampleMatches) {
+            _matches = sampleMatches;
+          }
+          _loadedFromCache = true;
           _lastUpdatedAt = DateTime.now();
-          _matches = sampleMatches;
-          _statusMessage = '$e – koppints a ⚙️ ikonra a beállításokhoz';
+          _statusMessage = 'Offline mód / hiba: $e\nUtolsó ismert adatok vagy mintaadatok. Húzd le a frissítéshez.';
         });
       }
     }
@@ -174,12 +178,8 @@ class _MainShellState extends State<MainShell> {
   }
 
   void _toggleFavorite(String id) {
-    setState(() {
-      if (_favoriteIds.contains(id)) {
-        _favoriteIds.remove(id);
-      } else {
-        _favoriteIds.add(id);
-      }
+    DisplayPrefs.toggleFavoriteMatch(id).then((_) {
+      if (mounted) setState(() {});
     });
   }
 
