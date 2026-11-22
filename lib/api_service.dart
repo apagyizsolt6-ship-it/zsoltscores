@@ -911,10 +911,12 @@ class _LeagueSpec {
   final List<String> names;
   final List<String> countries;
   final List<String> teamHints;
+  final List<String> fuzzy;
   const _LeagueSpec({
     required this.names,
     required this.countries,
     required this.teamHints,
+    this.fuzzy = const [],
   });
 }
 
@@ -925,8 +927,9 @@ const Map<String, _LeagueSpec> _leagueSpecs = {
     teamHints: ['arsenal', 'chelsea', 'liverpool', 'manchester city', 'man city', 'manchester united', 'man united', 'man utd', 'tottenham', 'spurs', 'newcastle', 'aston villa', 'everton', 'brighton', 'west ham', 'fulham', 'brentford', 'crystal palace', 'wolves', 'wolverhampton', 'nottingham', 'bournemouth'],
   ),
   'La Liga': _LeagueSpec(
-    names: ['la liga', 'laliga', 'primera division', 'laliga ea sports', 'la liga ea sports'],
+    names: ['la liga', 'laliga', 'primera division', 'laliga ea sports', 'la liga ea sports', 'laliga santander', 'la liga santander'],
     countries: ['spain'],
+    fuzzy: ['liga', 'primera'],
     teamHints: ['real madrid', 'barcelona', 'atletico', 'sevilla', 'valencia', 'villarreal', 'athletic', 'real sociedad', 'betis', 'celta', 'getafe', 'osasuna', 'girona', 'mallorca', 'espanyol', 'alaves', 'rayo'],
   ),
   'Serie A': _LeagueSpec(
@@ -1361,13 +1364,59 @@ class SportsApiService {
         }
       }
     }
-    if (!nameOk) return -1;
+    if (!nameOk) {
+      // Tartalék: ismert ország + a liga nevében szerepel a kulcsszó (pl. "LaLiga EA Sports" változatok)
+      if (spec.fuzzy.isNotEmpty &&
+          country.isNotEmpty &&
+          spec.countries.any((c) => country == c || country.contains(c)) &&
+          spec.fuzzy.any((f) => name.contains(f)) &&
+          !RegExp(r'\d|segunda|hypermotion|women|femin|frauen|youth|junior|reserve|\bu\d|cup|copa|super|qualif|play|\bb\b')
+              .hasMatch(name)) {
+        return 2;
+      }
+      return -1;
+    }
 
     if (country.isEmpty) return 1;
     for (final c in spec.countries) {
       if (country == c || country.contains(c)) return 0;
     }
     return -1;
+  }
+
+  /// Dátum feldolgozás: "2025.08.02." vagy "02.08.2025" jellegű szövegek
+  static DateTime? _parseLeagueDate(dynamic raw) {
+    final parts = (raw ?? '')
+        .toString()
+        .split(RegExp(r'[^0-9]+'))
+        .where((e) => e.isNotEmpty)
+        .toList();
+    if (parts.length < 3) return null;
+    int? y;
+    int? m;
+    int? d;
+    if (parts.first.length == 4) {
+      y = int.tryParse(parts[0]);
+      m = int.tryParse(parts[1]);
+      d = int.tryParse(parts[2]);
+    } else if (parts.last.length == 4) {
+      d = int.tryParse(parts[0]);
+      m = int.tryParse(parts[1]);
+      y = int.tryParse(parts[2]);
+    }
+    if (y == null || m == null || d == null) return null;
+    return DateTime(y, m.clamp(1, 12), d.clamp(1, 31));
+  }
+
+  /// 0 = most zajló szezon, minél nagyobb, annál messzebb van a mai naptól
+  static int _leagueDateOrder(Map item) {
+    final start = _parseLeagueDate(item['date_start']);
+    final end = _parseLeagueDate(item['date_end']);
+    if (start == null || end == null) return 500000;
+    final now = DateTime.now();
+    if (!now.isBefore(start) && !now.isAfter(end.add(const Duration(days: 1)))) return 0;
+    final gap = now.isBefore(start) ? start.difference(now).inDays : now.difference(end).inDays;
+    return (gap + 1).clamp(1, 499999);
   }
 
   /// StatPal GET: egyetlen újrapróbálás 429 / 502 / 503 esetén (a doksi backoffot javasol)
@@ -1401,7 +1450,7 @@ class SportsApiService {
     if (!force && _leagueCandidateIds.isNotEmpty) return;
     if (!ApiConfig.hasValidKey) return;
     if (!force) {
-      final cachedCandidates = await ApiCache.get('league_candidates_v1', customTtlMinutes: 1440);
+      final cachedCandidates = await ApiCache.get('league_candidates_v3', customTtlMinutes: 720);
       if (cachedCandidates is Map) {
         _leagueCandidateIds.clear();
         cachedCandidates.forEach((k, v) {
@@ -1439,9 +1488,10 @@ class SportsApiService {
         for (final entry in _leagueSpecs.entries) {
           final rank = _leagueMatchRank(entry.value, name, country);
           if (rank < 0) continue;
+          final order = rank * 1000000 + _leagueDateOrder(item);
           final bucket = ranked.putIfAbsent(entry.key, () => []);
           if (!bucket.any((e) => e.value == id)) {
-            bucket.add(MapEntry(rank, id));
+            bucket.add(MapEntry(order, id));
           }
         }
       }
@@ -1454,7 +1504,7 @@ class SportsApiService {
         if (ids.isNotEmpty) _resolvedLeagueIds[entry.key] = ids.first;
       }
       if (_leagueCandidateIds.isNotEmpty) {
-        await ApiCache.set('league_candidates_v1', _leagueCandidateIds);
+        await ApiCache.set('league_candidates_v3', _leagueCandidateIds);
       }
     } catch (_) {}
   }
@@ -1787,6 +1837,7 @@ class SportsApiService {
 
     Object? lastError;
     var rejectedWrongLeague = false;
+    final attempts = <String>[];
 
     if (rawRows.isEmpty) {
       var budget = 8; // a StatPal nem-élő végpontjai óránként csak ~10 kérést bírnak
@@ -1796,7 +1847,7 @@ class SportsApiService {
         final base = '$_statpalBaseUrl/leagues/$leagueId/standings';
         final uris = <Uri>[
           Uri.parse('$base?access_key=$accessKey'),
-          for (final season in _seasonCandidates().take(2))
+          for (final season in _seasonCandidates().take(1))
             Uri.parse('$base?season=$season&access_key=$accessKey'),
         ];
 
@@ -1807,6 +1858,7 @@ class SportsApiService {
           budget--;
           try {
             final res = await _statpalGet(uri);
+            attempts.add('$leagueId:${res.statusCode}');
             if (res.statusCode == 200) {
               if (res.body.contains('invalid-request')) {
                 lastError = Exception('StatPal: invalid-request (liga $leagueId)');
@@ -1845,12 +1897,16 @@ class SportsApiService {
           break;
         }
         // Téves bajnokság (pl. azonos nevű másik ország ligája) – következő jelölt
+        attempts.add('$leagueId:téves');
         rejectedWrongLeague = true;
       }
     }
 
     if (rawRows.isEmpty) {
       if (!rejectedWrongLeague && lastError != null) {
+        if (attempts.isNotEmpty) {
+          throw Exception('StatPal hiba – próbált azonosító:állapot → ${attempts.join(', ')}');
+        }
         throw lastError;
       }
       return FetchResult(
