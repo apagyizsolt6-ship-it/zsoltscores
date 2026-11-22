@@ -15,41 +15,67 @@ jobs:
 
       - run: flutter create . --platforms=android
 
-      - name: Engedélyek hozzáadása (Internet + Értesítések)
+      - name: Engedélyek hozzáadása
         run: |
           MANIFEST=android/app/src/main/AndroidManifest.xml
-          # INTERNET
           sed -i 's/<application/<uses-permission android:name="android.permission.INTERNET"\/>\n    <application/' "$MANIFEST"
-          # POST_NOTIFICATIONS (Android 13+)
           sed -i 's/<application/<uses-permission android:name="android.permission.POST_NOTIFICATIONS"\/>\n    <application/' "$MANIFEST"
 
-      - name: Gradle beállítások (desugaring + compileSdk)
+      - name: Gradle beállítások (desugaring + compileSdk + ndk)
         run: |
-          # Próbáljuk meg mindkét lehetséges fájlt (build.gradle vagy build.gradle.kts)
+          set -e
           if [ -f android/app/build.gradle ]; then
             GRADLE=android/app/build.gradle
+            echo "=== build.gradle tartalma a módosítás előtt ==="
+            cat "$GRADLE"
+            
             # compileSdk
-            sed -i 's/compileSdk flutter.compileSdkVersion/compileSdk 35/' "$GRADLE" || true
-            sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 35/' "$GRADLE" || true
-            # Desugaring
+            sed -i 's/compileSdk flutter.compileSdkVersion/compileSdk 36/' "$GRADLE" || true
+            sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 36/' "$GRADLE" || true
+            
+            # ndkVersion
+            if ! grep -q "ndkVersion" "$GRADLE"; then
+              sed -i '/android {/a \    ndkVersion "27.0.12077973"' "$GRADLE"
+            fi
+            
+            # desugaring flag
             if ! grep -q "coreLibraryDesugaringEnabled" "$GRADLE"; then
               sed -i '/compileOptions {/a \        coreLibraryDesugaringEnabled true' "$GRADLE"
             fi
-            # dependencies blokk végére
+            
+            # desugaring dependency - a dependencies blokk végére
             if ! grep -q "desugar_jdk_libs" "$GRADLE"; then
-              sed -i '/dependencies {/a \    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.4"' "$GRADLE"
+              # Keressük meg a dependencies blokkot és a záró } előtt szúrjuk be
+              sed -i '/^dependencies {/a \    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.4"' "$GRADLE"
             fi
+            
+            echo "=== build.gradle tartalma a módosítás után ==="
+            cat "$GRADLE"
+            
           elif [ -f android/app/build.gradle.kts ]; then
             GRADLE=android/app/build.gradle.kts
-            sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 35/' "$GRADLE" || true
+            echo "=== build.gradle.kts tartalma a módosítás előtt ==="
+            cat "$GRADLE"
+            
+            sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/' "$GRADLE" || true
+            
+            if ! grep -q "ndkVersion" "$GRADLE"; then
+              sed -i '/android {/a \    ndkVersion = "27.0.12077973"' "$GRADLE"
+            fi
+            
             if ! grep -q "isCoreLibraryDesugaringEnabled" "$GRADLE"; then
               sed -i '/compileOptions {/a \        isCoreLibraryDesugaringEnabled = true' "$GRADLE"
             fi
+            
             if ! grep -q "desugar_jdk_libs" "$GRADLE"; then
               sed -i '/dependencies {/a \    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")' "$GRADLE"
             fi
+            
+            echo "=== build.gradle.kts tartalma a módosítás után ==="
+            cat "$GRADLE"
           else
             echo "Nem találtam build.gradle fájlt!"
+            ls -la android/app/
             exit 1
           fi
 
